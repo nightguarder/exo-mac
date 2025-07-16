@@ -24,7 +24,7 @@ uvloop==0.21.0
 tinygrad @ git+https://github.com/tinygrad/tinygrad.git@ec120ce6b9ce8e4ff4b5692566a683ef240e8bc8
 
 # MLX packages for Apple Silicon
-mlx==0.26.3
+mlx==0.26.1
 mlx-lm==0.21.1
 
 # Additional ML frameworks

@@ -308,8 +308,14 @@ class ChatGPTAPI:
       if DEBUG >= 1: print(f"Invalid model: {model}. Supported: {list(model_cards.keys())}. Defaulting to {self.default_model}")
       model = self.default_model
     shard = build_base_shard(model, self.inference_engine_classname)
+    if shard is None:
+      return web.json_response({"error": f"Unsupported model: {model}"}, status=400)
     messages = [parse_message(msg) for msg in data.get("messages", [])]
-    tokenizer = await resolve_tokenizer(get_repo(shard.model_id, self.inference_engine_classname))
+    engine_class_name = get_inference_engine_class_name(self.inference_engine_classname)
+    repo_id = get_repo(shard.model_id, engine_class_name)
+    if repo_id is None:
+      return web.json_response({"error": f"Unsupported model: {model}"}, status=400)
+    tokenizer = await resolve_tokenizer(repo_id)
     prompt = build_prompt(tokenizer, messages, data.get("tools", None))
     tokens = tokenizer.encode(prompt)
     return web.json_response({
@@ -356,7 +362,10 @@ class ChatGPTAPI:
         status=400,
       )
 
-    tokenizer = await resolve_tokenizer(get_repo(shard.model_id, engine_class_name))
+    repo_id = get_repo(shard.model_id, engine_class_name)
+    if repo_id is None:
+      return web.json_response({"error": f"No repo found for model: {chat_request.model}"}, status=400)
+    tokenizer = await resolve_tokenizer(repo_id)
     if DEBUG >= 4: print(f"[ChatGPTAPI] Resolved tokenizer: {tokenizer}")
 
     # Add system prompt if set

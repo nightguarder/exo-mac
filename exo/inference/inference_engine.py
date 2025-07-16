@@ -38,7 +38,7 @@ class InferenceEngine(ABC):
     self.session[key] = value
 
   async def clear_session(self):
-    self.session.empty()
+    self.session.clear()
 
   async def infer_prompt(self, request_id: str, shard: Shard, prompt: str, inference_state: Optional[dict] = None) -> tuple[np.ndarray, Optional[dict]]:
     tokens = await self.encode(shard, prompt)

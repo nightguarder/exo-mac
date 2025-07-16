@@ -50,6 +50,8 @@ async def ensure_downloads_dir() -> Path:
 
 async def delete_model(model_id: str, inference_engine_name: str) -> bool:
   repo_id = get_repo(model_id, inference_engine_name)
+  if repo_id is None:
+    return False
   model_dir = await ensure_downloads_dir()/repo_id.replace("/", "--")
   if not await aios.path.exists(model_dir): return False
   await asyncio.to_thread(shutil.rmtree, model_dir, ignore_errors=False)
@@ -184,7 +186,7 @@ def calculate_repo_progress(shard: Shard, repo_id: str, revision: str, file_prog
   all_downloaded_bytes = sum([p.downloaded for p in file_progress.values()])
   all_downloaded_bytes_this_session = sum([p.downloaded_this_session for p in file_progress.values()])
   elapsed_time = time.time() - all_start_time
-  all_speed = all_downloaded_bytes_this_session / elapsed_time if elapsed_time > 0 else 0
+  all_speed = int(all_downloaded_bytes_this_session / elapsed_time) if elapsed_time > 0 else 0
   all_eta = timedelta(seconds=(all_total_bytes - all_downloaded_bytes) / all_speed) if all_speed > 0 else timedelta(seconds=0)
   status = "complete" if all(p.status == "complete" for p in file_progress.values()) else "in_progress" if any(p.status == "in_progress" for p in file_progress.values()) else "not_started"
   return RepoProgressEvent(shard, repo_id, revision, len([p for p in file_progress.values() if p.downloaded == p.total]), len(file_progress), all_downloaded_bytes, all_downloaded_bytes_this_session, all_total_bytes, all_speed, all_eta, file_progress, status)
@@ -197,7 +199,10 @@ async def get_weight_map(repo_id: str, revision: str = "main") -> Dict[str, str]
 
 async def resolve_allow_patterns(shard: Shard, inference_engine_classname: str) -> List[str]:
   try:
-    weight_map = await get_weight_map(get_repo(shard.model_id, inference_engine_classname))
+    repo_id = get_repo(shard.model_id, inference_engine_classname)
+    if repo_id is None:
+      return ["*"]
+    weight_map = await get_weight_map(repo_id)
     return get_allow_patterns(weight_map, shard)
   except:
     if DEBUG >= 1: print(f"Error getting weight map for {shard.model_id=} and inference engine {inference_engine_classname}")
@@ -213,6 +218,8 @@ async def get_downloaded_size(path: Path) -> int:
 async def download_shard(shard: Shard, inference_engine_classname: str, on_progress: AsyncCallbackSystem[str, Tuple[Shard, RepoProgressEvent]], max_parallel_downloads: int = 8, skip_download: bool = False) -> tuple[Path, RepoProgressEvent]:
   if DEBUG >= 2 and not skip_download: print(f"Downloading {shard.model_id=} for {inference_engine_classname}")
   repo_id = get_repo(shard.model_id, inference_engine_classname)
+  if repo_id is None:
+    raise ValueError(f"No repo found for {shard.model_id=} and inference engine {inference_engine_classname}")
   revision = "main"
   target_dir = await ensure_downloads_dir()/repo_id.replace("/", "--")
   if not skip_download: await aios.makedirs(target_dir, exist_ok=True)
@@ -225,19 +232,21 @@ async def download_shard(shard: Shard, inference_engine_classname: str, on_progr
 
   all_start_time = time.time()
   file_list = await fetch_file_list_with_cache(repo_id, revision)
-  filtered_file_list = list(filter_repo_objects(file_list, allow_patterns=allow_patterns, key=lambda x: x["path"]))
+  filtered_file_list = list(filter_repo_objects(file_list, allow_patterns=allow_patterns, key=lambda x: str(x["path"])))
   file_progress: Dict[str, RepoFileProgressEvent] = {}
   def on_progress_wrapper(file: dict, curr_bytes: int, total_bytes: int):
     start_time = file_progress[file["path"]].start_time if file["path"] in file_progress else time.time()
     downloaded_this_session = file_progress[file["path"]].downloaded_this_session + (curr_bytes - file_progress[file["path"]].downloaded) if file["path"] in file_progress else curr_bytes
-    speed = downloaded_this_session / (time.time() - start_time) if time.time() - start_time > 0 else 0
+    speed = int(downloaded_this_session / (time.time() - start_time)) if time.time() - start_time > 0 else 0
     eta = timedelta(seconds=(total_bytes - curr_bytes) / speed) if speed > 0 else timedelta(seconds=0)
     file_progress[file["path"]] = RepoFileProgressEvent(repo_id, revision, file["path"], curr_bytes, downloaded_this_session, total_bytes, speed, eta, "complete" if curr_bytes == total_bytes else "in_progress", start_time)
-    on_progress.trigger_all(shard, calculate_repo_progress(shard, repo_id, revision, file_progress, all_start_time))
+    on_progress.trigger_all((shard, calculate_repo_progress(shard, repo_id, revision, file_progress, all_start_time)))
     if DEBUG >= 6: print(f"Downloading {file['path']} {curr_bytes}/{total_bytes} {speed} {eta}")
   for file in filtered_file_list:
-    downloaded_bytes = await get_downloaded_size(target_dir/file["path"])
-    file_progress[file["path"]] = RepoFileProgressEvent(repo_id, revision, file["path"], downloaded_bytes, 0, file["size"], 0, timedelta(0), "complete" if downloaded_bytes == file["size"] else "not_started", time.time())
+    file_path = str(file["path"])
+    file_size = int(file["size"])
+    downloaded_bytes = await get_downloaded_size(target_dir/file_path)
+    file_progress[file_path] = RepoFileProgressEvent(repo_id, revision, file_path, downloaded_bytes, 0, file_size, 0, timedelta(0), "complete" if downloaded_bytes == file_size else "not_started", time.time())
 
   semaphore = asyncio.Semaphore(max_parallel_downloads)
   async def download_with_semaphore(file):
@@ -245,9 +254,9 @@ async def download_shard(shard: Shard, inference_engine_classname: str, on_progr
       await download_file_with_retry(repo_id, revision, file["path"], target_dir, lambda curr_bytes, total_bytes: on_progress_wrapper(file, curr_bytes, total_bytes))
   if not skip_download: await asyncio.gather(*[download_with_semaphore(file) for file in filtered_file_list])
   final_repo_progress = calculate_repo_progress(shard, repo_id, revision, file_progress, all_start_time)
-  on_progress.trigger_all(shard, final_repo_progress)
-  if gguf := next((f for f in filtered_file_list if f["path"].endswith(".gguf")), None):
-    return target_dir/gguf["path"], final_repo_progress
+  on_progress.trigger_all((shard, final_repo_progress))
+  if gguf := next((f for f in filtered_file_list if str(f["path"]).endswith(".gguf")), None):
+    return target_dir/str(gguf["path"]), final_repo_progress
   else:
     return target_dir, final_repo_progress
 
@@ -310,7 +319,11 @@ class NewShardDownloader(ShardDownloader):
 
   async def get_shard_download_status(self, inference_engine_name: str) -> AsyncIterator[tuple[Path, RepoProgressEvent]]:
     if DEBUG >= 2: print("Getting shard download status for", inference_engine_name)
-    tasks = [download_shard(build_full_shard(model_id, inference_engine_name), inference_engine_name, self.on_progress, skip_download=True) for model_id in get_supported_models([[inference_engine_name]])]
+    tasks = []
+    for model_id in get_supported_models([[inference_engine_name]]):
+      shard = build_full_shard(model_id, inference_engine_name)
+      if shard is not None:
+        tasks.append(download_shard(shard, inference_engine_name, self.on_progress, skip_download=True))
     for task in asyncio.as_completed(tasks):
       try:
         path, progress = await task

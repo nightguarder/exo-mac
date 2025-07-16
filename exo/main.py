@@ -37,6 +37,7 @@ import psutil
 os.environ["GRPC_VERBOSITY"] = "error"
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
+os.environ["DEBUG"] = "2"  # Enable debug for troubleshooting
 
 # Configure uvloop for maximum performance
 def configure_uvloop():
@@ -235,10 +236,6 @@ async def main():
 
   inference_engine = get_inference_engine(inference_engine_name, shard_downloader)
   print(f"Using inference engine: {inference_engine.__class__.__name__} with shard downloader: {shard_downloader.__class__.__name__}")
-
-  
-
-  
 
   # In local mode, we always use dummy inference engine
   try: await check_exo_home()
