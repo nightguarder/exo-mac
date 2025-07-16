@@ -13,6 +13,7 @@ import signal
 from exo import DEBUG, VERSION
 from exo.helpers import PrefixDict, shutdown, get_exo_images_dir
 from exo.inference.tokenizers import resolve_tokenizer
+from exo.inference.inference_engine import get_inference_engine_class_name
 from exo.orchestration import Node
 from exo.models import build_base_shard, build_full_shard, model_cards, get_repo, get_supported_models, get_pretty_name
 from typing import Callable, Optional
@@ -22,7 +23,7 @@ import base64
 from io import BytesIO
 import platform
 from exo.download.download_progress import RepoProgressEvent
-from exo.download.new_shard_download import delete_model
+from exo.download.new_shard_download import delete_model, get_downloaded_models
 import tempfile
 from exo.apputil import create_animation_mp4
 from collections import defaultdict
@@ -186,12 +187,14 @@ class ChatGPTAPI:
     response_timeout: int = 90,
     on_chat_completion_request: Callable[[str, ChatCompletionRequest, str], None] = None,
     default_model: Optional[str] = None,
-    system_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None,
+    local_mode: bool = False
   ):
     self.node = node
     self.inference_engine_classname = inference_engine_classname
     self.response_timeout = response_timeout
     self.on_chat_completion_request = on_chat_completion_request
+    self.local_mode = local_mode
     self.app = web.Application(client_max_size=100*1024*1024)  # 100MB to support image upload
     self.prompts: PrefixDict[str, PromptSession] = PrefixDict()
     self.prev_token_lens: Dict[str, int] = {}
@@ -288,7 +291,12 @@ class ChatGPTAPI:
       return web.json_response({"detail": f"Server error: {str(e)}"}, status=500)
 
   async def handle_get_models(self, request):
-    models_list = [{"id": model_name, "object": "model", "owned_by": "exo", "ready": True} for model_name, _ in model_cards.items()]
+    local_mode = request.query.get("local_mode", "false").lower() == "true"
+    if local_mode:
+      models_list = await get_downloaded_models(self.inference_engine_classname)
+      models_list = [{"id": model_name, "object": "model", "owned_by": "exo", "ready": True} for model_name in models_list]
+    else:
+      models_list = [{"id": model_name, "object": "model", "owned_by": "exo", "ready": True} for model_name, _ in model_cards.items()]
     return web.json_response({"object": "list", "data": models_list})
 
   async def handle_post_chat_token_encode(self, request):
@@ -325,13 +333,22 @@ class ChatGPTAPI:
     data = await request.json()
     if DEBUG >= 2: print(f"[ChatGPTAPI] Handling chat completions request from {request.remote}: {data}")
     stream = data.get("stream", False)
+    local_mode = request.query.get("local_mode", "false").lower() == "true" or self.local_mode
     chat_request = parse_chat_request(data, self.default_model)
     if chat_request.model and chat_request.model.startswith("gpt-"):  # to be compatible with ChatGPT tools, point all gpt- model requests to default model
       chat_request.model = self.default_model
     if not chat_request.model or chat_request.model not in model_cards:
       if DEBUG >= 1: print(f"[ChatGPTAPI] Invalid model: {chat_request.model}. Supported: {list(model_cards.keys())}. Defaulting to {self.default_model}")
       chat_request.model = self.default_model
-    shard = build_base_shard(chat_request.model, self.inference_engine_classname)
+    if local_mode and chat_request.model != "dummy":
+        engine_class_name = get_inference_engine_class_name(self.inference_engine_classname)
+        local_models = await get_downloaded_models(engine_class_name)
+        if chat_request.model not in local_models:
+          return web.json_response({"detail": f"Model {chat_request.model} is not available in local mode."}, status=400)
+    else:
+        engine_class_name = self.inference_engine_classname
+    
+    shard = build_base_shard(chat_request.model, engine_class_name)
     if not shard:
       supported_models = [model for model, info in model_cards.items() if self.inference_engine_classname in info.get("repo", {})]
       return web.json_response(
@@ -339,7 +356,7 @@ class ChatGPTAPI:
         status=400,
       )
 
-    tokenizer = await resolve_tokenizer(get_repo(shard.model_id, self.inference_engine_classname))
+    tokenizer = await resolve_tokenizer(get_repo(shard.model_id, engine_class_name))
     if DEBUG >= 4: print(f"[ChatGPTAPI] Resolved tokenizer: {tokenizer}")
 
     # Add system prompt if set

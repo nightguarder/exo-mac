@@ -1,5 +1,5 @@
 from exo.inference.shard import Shard
-from exo.models import get_repo
+from exo.models import get_repo, model_cards
 from pathlib import Path
 from exo.download.hf.hf_helpers import get_hf_endpoint, get_auth_headers, filter_repo_objects, get_allow_patterns
 from exo.download.shard_download import ShardDownloader
@@ -54,6 +54,18 @@ async def delete_model(model_id: str, inference_engine_name: str) -> bool:
   if not await aios.path.exists(model_dir): return False
   await asyncio.to_thread(shutil.rmtree, model_dir, ignore_errors=False)
   return True
+
+async def get_downloaded_models(inference_engine_name: str) -> List[str]:
+  downloads_dir = await ensure_downloads_dir()
+  downloaded_models = []
+  for model_id, model_info in model_cards.items():
+    repo_id = model_info.get("repo", {}).get(inference_engine_name)
+    if repo_id:
+      model_dir = downloads_dir/repo_id.replace("/", "--")
+      if await aios.path.exists(model_dir):
+        downloaded_models.append(model_id)
+  return downloaded_models
+
 
 async def seed_models(seed_dir: Union[str, Path]):
   """Move model in resources folder of app to .cache/huggingface/hub"""

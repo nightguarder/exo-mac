@@ -21,10 +21,10 @@ from exo.topology.ring_memory_weighted_partitioning_strategy import RingMemoryWe
 from exo.api import ChatGPTAPI
 from exo.download.shard_download import ShardDownloader, NoopShardDownloader
 from exo.download.download_progress import RepoProgressEvent
-from exo.download.new_shard_download import new_shard_downloader, has_exo_home_read_access, has_exo_home_write_access, ensure_exo_home, seed_models
+from exo.download.new_shard_download import new_shard_downloader, has_exo_home_read_access, has_exo_home_write_access, ensure_exo_home, seed_models, get_downloaded_models
 from exo.helpers import print_yellow_exo, find_available_port, DEBUG, get_system_info, get_or_create_node_id, get_all_ip_addresses_and_interfaces, terminal_link, shutdown
 from exo.inference.shard import Shard
-from exo.inference.inference_engine import get_inference_engine
+from exo.inference.inference_engine import get_inference_engine, get_inference_engine_class_name
 from exo.inference.tokenizers import resolve_tokenizer
 from exo.models import build_base_shard, get_repo
 from exo.viz.topology_viz import TopologyViz
@@ -82,6 +82,7 @@ parser.add_argument("--chatgpt-api-port", type=int, default=52415, help="ChatGPT
 parser.add_argument("--chatgpt-api-response-timeout", type=int, default=900, help="ChatGPT API response timeout in seconds")
 parser.add_argument("--max-generate-tokens", type=int, default=10000, help="Max tokens to generate in each request")
 parser.add_argument("--inference-engine", type=str, default=None, help="Inference engine to use (mlx, tinygrad, or dummy)")
+parser.add_argument("--local-mode", action="store_true", help="Enable local mode - runs with dummy model and uses locally downloaded models")
 parser.add_argument("--disable-tui", action=argparse.BooleanOptionalAction, help="Disable TUI")
 parser.add_argument("--run-model", type=str, help="Specify a model to run directly")
 parser.add_argument("--prompt", type=str, help="Prompt for the model when using --run-model", default="Who are you?")
@@ -93,130 +94,19 @@ parser.add_argument("--interface-type-filter", type=str, default=None, help="Com
 parser.add_argument("--system-prompt", type=str, default=None, help="System prompt for the ChatGPT API")
 args = parser.parse_args()
 print(f"Selected inference engine: {args.inference_engine}")
+if args.local_mode:
+    print("Local mode enabled - using dummy model and local downloads")
 
 print_yellow_exo()
 
 system_info = get_system_info()
 print(f"Detected system: {system_info}")
 
-shard_downloader: ShardDownloader = new_shard_downloader(args.max_parallel_downloads) if args.inference_engine != "dummy" else NoopShardDownloader()
-inference_engine_name = args.inference_engine or ("mlx" if system_info == "Apple Silicon Mac" else "tinygrad")
-print(f"Inference engine name after selection: {inference_engine_name}")
 
-inference_engine = get_inference_engine(inference_engine_name, shard_downloader)
-print(f"Using inference engine: {inference_engine.__class__.__name__} with shard downloader: {shard_downloader.__class__.__name__}")
 
-if args.node_port is None:
-  args.node_port = find_available_port(args.node_host)
-  if DEBUG >= 1: print(f"Using available port: {args.node_port}")
 
-args.node_id = args.node_id or get_or_create_node_id()
-chatgpt_api_endpoints = [f"http://{ip}:{args.chatgpt_api_port}/v1/chat/completions" for ip, _ in get_all_ip_addresses_and_interfaces()]
-web_chat_urls = [f"http://{ip}:{args.chatgpt_api_port}" for ip, _ in get_all_ip_addresses_and_interfaces()]
-if DEBUG >= 0:
-  print("Chat interface started:")
-  for web_chat_url in web_chat_urls:
-    print(f" - {terminal_link(web_chat_url)}")
-  print("ChatGPT API endpoint served at:")
-  for chatgpt_api_endpoint in chatgpt_api_endpoints:
-    print(f" - {terminal_link(chatgpt_api_endpoint)}")
 
-# Convert node-id-filter and interface-type-filter to lists if provided
-allowed_node_ids = args.node_id_filter.split(',') if args.node_id_filter else None
-allowed_interface_types = args.interface_type_filter.split(',') if args.interface_type_filter else None
 
-if args.discovery_module == "udp":
-  discovery = UDPDiscovery(
-    args.node_id,
-    args.node_port,
-    args.listen_port,
-    args.broadcast_port,
-    lambda peer_id, address, description, device_capabilities: GRPCPeerHandle(peer_id, address, description, device_capabilities),
-    discovery_timeout=args.discovery_timeout,
-    allowed_node_ids=allowed_node_ids,
-    allowed_interface_types=allowed_interface_types
-  )
-elif args.discovery_module == "tailscale":
-  discovery = TailscaleDiscovery(
-    args.node_id,
-    args.node_port,
-    lambda peer_id, address, description, device_capabilities: GRPCPeerHandle(peer_id, address, description, device_capabilities),
-    discovery_timeout=args.discovery_timeout,
-    tailscale_api_key=args.tailscale_api_key,
-    tailnet=args.tailnet_name,
-    allowed_node_ids=allowed_node_ids
-  )
-elif args.discovery_module == "manual":
-  if not args.discovery_config_path:
-    raise ValueError(f"--discovery-config-path is required when using manual discovery. Please provide a path to a config json file.")
-  discovery = ManualDiscovery(args.discovery_config_path, args.node_id, create_peer_handle=lambda peer_id, address, description, device_capabilities: GRPCPeerHandle(peer_id, address, description, device_capabilities))
-topology_viz = TopologyViz(chatgpt_api_endpoints=chatgpt_api_endpoints, web_chat_urls=web_chat_urls) if not args.disable_tui else None
-node = Node(
-  args.node_id,
-  None,
-  inference_engine,
-  discovery,
-  shard_downloader,
-  partitioning_strategy=RingMemoryWeightedPartitioningStrategy(),
-  max_generate_tokens=args.max_generate_tokens,
-  topology_viz=topology_viz,
-  default_sample_temperature=args.default_temp
-)
-server = GRPCServer(node, args.node_host, args.node_port)
-node.server = server
-api = ChatGPTAPI(
-  node,
-  node.inference_engine.__class__.__name__,
-  response_timeout=args.chatgpt_api_response_timeout,
-  on_chat_completion_request=lambda req_id, __, prompt: topology_viz.update_prompt(req_id, prompt) if topology_viz else None,
-  default_model=args.default_model,
-  system_prompt=args.system_prompt
-)
-buffered_token_output = {}
-def update_topology_viz(req_id, tokens, __):
-  if not topology_viz: return
-  if not node.inference_engine.shard: return
-  if node.inference_engine.shard.model_id == 'stable-diffusion-2-1-base': return
-  if req_id in buffered_token_output: buffered_token_output[req_id].extend(tokens)
-  else: buffered_token_output[req_id] = tokens
-  topology_viz.update_prompt_output(req_id, node.inference_engine.tokenizer.decode(buffered_token_output[req_id]))
-node.on_token.register("update_topology_viz").on_next(update_topology_viz)
-def update_prompt_viz(request_id, opaque_status: str):
-  if not topology_viz: return
-  try:
-    status = json.loads(opaque_status)
-    if status.get("type") != "node_status" or status.get("status") != "start_process_prompt": return
-    topology_viz.update_prompt(request_id, status.get("prompt", "corrupted prompt (this should never happen)"))
-  except Exception as e:
-    if DEBUG >= 2:
-      print(f"Failed to update prompt viz: {e}")
-      traceback.print_exc()
-node.on_opaque_status.register("update_prompt_viz").on_next(update_prompt_viz)
-
-def preemptively_load_shard(request_id: str, opaque_status: str):
-  try:
-    status = json.loads(opaque_status)
-    if status.get("type") != "node_status" or status.get("status") != "start_process_prompt": return
-    current_shard = node.get_current_shard(Shard.from_dict(status.get("shard")))
-    if DEBUG >= 2: print(f"Preemptively starting download for {current_shard}")
-    asyncio.create_task(node.inference_engine.ensure_shard(current_shard))
-  except Exception as e:
-    if DEBUG >= 2:
-      print(f"Failed to preemptively start download: {e}")
-      traceback.print_exc()
-node.on_opaque_status.register("preemptively_load_shard").on_next(preemptively_load_shard)
-
-last_events: dict[str, tuple[float, RepoProgressEvent]] = {}
-def throttled_broadcast(shard: Shard, event: RepoProgressEvent):
-  global last_events
-  current_time = time.time()
-  if event.status == "not_started": return
-  last_event = last_events.get(shard.model_id)
-  if last_event and last_event[1].status == "complete" and event.status == "complete": return
-  if last_event and last_event[0] == event.status and current_time - last_event[0] < 0.2: return
-  last_events[shard.model_id] = (current_time, event)
-  asyncio.create_task(node.broadcast_opaque_status("", json.dumps({"type": "download_progress", "node_id": node.id, "progress": event.to_dict()})))
-shard_downloader.on_progress.register("broadcast").on_next(throttled_broadcast)
 
 async def run_model_cli(node: Node, model_name: str, prompt: str):
   inference_class = node.inference_engine.__class__.__name__
@@ -228,8 +118,8 @@ async def run_model_cli(node: Node, model_name: str, prompt: str):
   request_id = str(uuid.uuid4())
   callback_id = f"cli-wait-response-{request_id}"
   callback = node.on_token.register(callback_id)
-  if topology_viz:
-    topology_viz.update_prompt(request_id, prompt)
+  if node.topology_viz:
+    node.topology_viz.update_prompt(request_id, prompt)
   prompt = tokenizer.apply_chat_template([{"role": "user", "content": prompt}], tokenize=False, add_generation_prompt=True)
 
   try:
@@ -243,7 +133,10 @@ async def run_model_cli(node: Node, model_name: str, prompt: str):
     await callback.wait(on_token, timeout=300)
 
     print("\nGenerated response:")
-    print(tokenizer.decode(tokens))
+    response = tokenizer.decode(tokens)
+    print(response)
+    if node.topology_viz:
+      node.topology_viz.update_prompt_output(request_id, response)
   except Exception as e:
     print(f"Error processing prompt: {str(e)}")
     traceback.print_exc()
@@ -321,8 +214,51 @@ async def check_exo_home():
 async def main():
   loop = asyncio.get_running_loop()
 
+  shard_downloader: ShardDownloader = new_shard_downloader(args.max_parallel_downloads)
+
+  # In local mode, use real downloaded models if available
+  if args.local_mode:
+    # Determine the inference engine to check for downloaded models
+    engine_to_check = args.inference_engine or ("mlx" if system_info == "Apple Silicon Mac" else "tinygrad")
+    engine_class_name = get_inference_engine_class_name(engine_to_check)
+    downloaded_models = await get_downloaded_models(engine_class_name)
+    if downloaded_models:
+        inference_engine_name = engine_to_check
+        print(f"Found {len(downloaded_models)} downloaded models for {engine_to_check} engine: {downloaded_models}")
+    else:
+        inference_engine_name = "dummy"
+        print(f"No downloaded models found in local cache for {engine_to_check} engine. Falling back to dummy inference engine.")
+  else:
+    inference_engine_name = args.inference_engine or ("mlx" if system_info == "Apple Silicon Mac" else "tinygrad")
+
+  print(f"Inference engine name after selection: {inference_engine_name}")
+
+  inference_engine = get_inference_engine(inference_engine_name, shard_downloader)
+  print(f"Using inference engine: {inference_engine.__class__.__name__} with shard downloader: {shard_downloader.__class__.__name__}")
+
+  
+
+  
+
+  # In local mode, we always use dummy inference engine
   try: await check_exo_home()
   except Exception as e: print(f"Error checking exo home directory: {e}")
+
+  node_id = args.node_id or get_or_create_node_id()
+  node_port = args.node_port or find_available_port(args.node_host)
+
+  # Setup discovery
+  def create_peer_handle(peer_id, peer_addr, peer_description, peer_device_capabilities):
+      return GRPCPeerHandle(peer_id, peer_addr, peer_description, peer_device_capabilities)
+
+  if args.discovery_module == "udp":
+      discovery = UDPDiscovery(node_id, node_port, args.listen_port, args.broadcast_port, create_peer_handle, discovery_timeout=args.discovery_timeout, allowed_node_ids=args.node_id_filter.split(",") if args.node_id_filter else None, allowed_interface_types=args.interface_type_filter.split(",") if args.interface_type_filter else None)
+  elif args.discovery_module == "tailscale":
+      discovery = TailscaleDiscovery(args.tailnet_name, args.tailscale_api_key)
+  elif args.discovery_module == "manual":
+      discovery = ManualDiscovery(args.discovery_config_path)
+  else:
+      raise ValueError(f"Unsupported discovery module: {args.discovery_module}")
 
   if not args.models_seed_dir is None:
     try:
@@ -345,6 +281,23 @@ async def main():
   if platform.system() != "Windows":
     for s in [signal.SIGINT, signal.SIGTERM]:
       loop.add_signal_handler(s, handle_exit)
+
+    # Setup node
+  server = GRPCServer(node_id, host=args.node_host, port=node_port)
+  partitioning_strategy = RingMemoryWeightedPartitioningStrategy()
+  topology_viz = None
+  if not args.disable_tui:
+      topology_viz = TopologyViz()
+
+  node = Node(
+      _id=node_id,
+      server=server,
+      inference_engine=inference_engine,
+      partitioning_strategy=partitioning_strategy,
+      discovery=discovery,
+      shard_downloader=shard_downloader,
+      topology_viz=topology_viz
+  )
 
   await node.start(wait_for_peers=args.wait_for_peers)
 
@@ -370,6 +323,7 @@ async def main():
       await train_model_cli(node, model_name, dataloader, args.batch_size, args.iters, save_interval=args.save_every, checkpoint_dir=args.save_checkpoint_dir)
 
   else:
+    api = ChatGPTAPI(node, inference_engine_name, args.chatgpt_api_response_timeout, default_model=args.default_model, system_prompt=args.system_prompt, local_mode=args.local_mode)
     asyncio.create_task(api.run(port=args.chatgpt_api_port))  # Start the API server as a non-blocking task
     await asyncio.Event().wait()
 

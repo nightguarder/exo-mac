@@ -72,10 +72,12 @@ def load_config(model_path: Path) -> dict:
     if model_index_path.exists():
       config = load_model_index(model_path, model_index_path)
       return config
+    
+    # If neither config.json nor model_index.json exists
+    raise FileNotFoundError(f"Neither config.json nor model_index.json found in {model_path}")
   except FileNotFoundError:
     logging.error(f"Config file not found in {model_path}")
     raise
-  return config
 
 def load_model_shard(
   model_path: Path,

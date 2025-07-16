@@ -58,6 +58,11 @@ inference_engine_classes = {
 }
 
 
+def get_inference_engine_class_name(inference_engine_name: str) -> str:
+  """Convert short inference engine name to class name."""
+  return inference_engine_classes.get(inference_engine_name, inference_engine_name)
+
+
 def get_inference_engine(inference_engine_name: str, shard_downloader: ShardDownloader):
   if DEBUG >= 2:
     print(f"get_inference_engine called with: {inference_engine_name}")
