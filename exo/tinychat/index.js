@@ -42,6 +42,10 @@ document.addEventListener("alpine:init", () => {
     // Show only models available locally
     showDownloadedOnly: false,
 
+    // Offline mode and network status
+    offlineMode: false,
+    networkStatus: 'online', // 'online', 'offline', 'checking'
+
     topology: null,
     topologyInterval: null,
 
@@ -52,6 +56,9 @@ document.addEventListener("alpine:init", () => {
       // Clean up any pending messages
       localStorage.removeItem("pendingMessage");
 
+      // Initialize network status detection
+      this.initNetworkStatusDetection();
+
       // Get initial model list
       this.fetchInitialModels();
 
@@ -60,6 +67,56 @@ document.addEventListener("alpine:init", () => {
 
       // Start model polling with the new pattern
       this.startModelPolling();
+    },
+
+    initNetworkStatusDetection() {
+      // Check network status periodically
+      this.checkNetworkStatus();
+      setInterval(() => this.checkNetworkStatus(), 30000); // Check every 30 seconds
+
+      // Listen for browser online/offline events
+      window.addEventListener('online', () => {
+        this.networkStatus = 'online';
+        this.offlineMode = false;
+      });
+
+      window.addEventListener('offline', () => {
+        this.networkStatus = 'offline';
+        this.offlineMode = true;
+      });
+    },
+
+    async checkNetworkStatus() {
+      if (!navigator.onLine) {
+        this.networkStatus = 'offline';
+        this.offlineMode = true;
+        return;
+      }
+
+      this.networkStatus = 'checking';
+      try {
+        // Try to fetch from our own server with a small timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch(`${window.location.origin}/v1/models`, {
+          signal: controller.signal,
+          method: 'HEAD'
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          this.networkStatus = 'online';
+          this.offlineMode = false;
+        } else {
+          this.networkStatus = 'offline';
+          this.offlineMode = true;
+        }
+      } catch (error) {
+        this.networkStatus = 'offline';
+        this.offlineMode = true;
+      }
     },
 
     async fetchInitialModels() {
@@ -95,6 +152,12 @@ document.addEventListener("alpine:init", () => {
         evtSource.onmessage = (event) => {
           if (event.data === "[DONE]") {
             evtSource.close();
+            
+            // Auto-select offline model when in offline mode
+            if (this.offlineMode) {
+              this.autoSelectOfflineModel();
+            }
+            
             resolve();
             return;
           }
@@ -576,6 +639,12 @@ document.addEventListener("alpine:init", () => {
     },
 
     async handleDownload(modelName) {
+      // Prevent downloads in offline mode
+      if (this.offlineMode) {
+        this.setError(new Error('Cannot download models in offline mode. Please check your internet connection.'));
+        return;
+      }
+
       try {
         const response = await fetch(`${window.location.origin}/download`, {
           method: 'POST',
@@ -687,11 +756,20 @@ document.addEventListener("alpine:init", () => {
     },
 
     // Update the existing groupModelsByPrefix method to include counts
-    groupModelsByPrefix(models) {
+    groupModelsByPrefix(models, showDownloadedOnly = false, offlineMode = false) {
       const groups = {};
-      const filteredModels = this.showDownloadedOnly ?
-        Object.fromEntries(Object.entries(models).filter(([, model]) => model.downloaded)) :
-        models;
+      
+      // In offline mode, prioritize downloaded models and filter out non-downloaded ones
+      let filteredModels = models;
+      if (offlineMode) {
+        filteredModels = Object.fromEntries(
+          Object.entries(models).filter(([_, model]) => model.downloaded)
+        );
+      } else if (showDownloadedOnly) {
+        filteredModels = Object.fromEntries(
+          Object.entries(models).filter(([_, model]) => model.downloaded)
+        );
+      }
 
       Object.entries(filteredModels).forEach(([key, model]) => {
         const parts = key.split('-');
@@ -717,14 +795,49 @@ document.addEventListener("alpine:init", () => {
       return groups;
     },
 
-    toggleGroup(prefix, subPrefix = null) {
-      const key = subPrefix ? `${prefix}-${subPrefix}` : prefix;
+    // Get offline available models count
+    getOfflineAvailableModels() {
+      return Object.fromEntries(
+        Object.entries(this.models).filter(([_, model]) => model.downloaded)
+      );
+    },
+
+    // Get offline model count for display
+    getOfflineModelCount() {
+      return Object.values(this.models).filter(model => model.downloaded).length;
+    },
+
+    // Auto-select best available model for offline mode
+    autoSelectOfflineModel() {
+      if (!this.offlineMode) return;
+
+      const offlineModels = this.getOfflineAvailableModels();
+      const availableModelIds = Object.keys(offlineModels);
+      
+      if (availableModelIds.length === 0) {
+        console.warn('No offline models available');
+        return;
+      }
+
+      // Check if current selected model is available offline
+      if (this.cstate.selectedModel && offlineModels[this.cstate.selectedModel]) {
+        return; // Current model is fine
+      }
+
+      // Select first available offline model
+      this.cstate.selectedModel = availableModelIds[0];
+      console.log(`Auto-selected offline model: ${this.cstate.selectedModel}`);
+    },
+
+    // Group expansion/collapse methods
+    toggleGroup(mainPrefix, subPrefix = null) {
+      const key = subPrefix ? `${mainPrefix}-${subPrefix}` : mainPrefix;
       this.expandedGroups[key] = !this.expandedGroups[key];
     },
 
-    isGroupExpanded(prefix, subPrefix = null) {
-      const key = subPrefix ? `${prefix}-${subPrefix}` : prefix;
-      return this.expandedGroups[key] || false;
+    isGroupExpanded(mainPrefix, subPrefix = null) {
+      const key = subPrefix ? `${mainPrefix}-${subPrefix}` : mainPrefix;
+      return this.expandedGroups[key] !== false; // Default to expanded
     },
   }));
 });

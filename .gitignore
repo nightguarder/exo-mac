@@ -174,3 +174,4 @@ cython_debug/
 
 exo/tinychat/images/*.png
 plan.md
+HUGGINGFACE_AUTH_GUIDE.md

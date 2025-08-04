@@ -99,6 +99,7 @@ async def fetch_file_list_with_retry(repo_id: str, revision: str = "main", path:
     except Exception as e:
       if attempt == n_attempts - 1: raise e
       await asyncio.sleep(min(8, 0.1 * (2 ** attempt)))
+  return []  # This should never be reached due to the raise above, but satisfies type checker
 
 async def _fetch_file_list(repo_id: str, revision: str = "main", path: str = "") -> List[Dict[str, Union[str, int]]]:
   api_url = f"{get_hf_endpoint()}/api/models/{repo_id}/tree/{revision}"
@@ -151,6 +152,8 @@ async def download_file_with_retry(repo_id: str, revision: str, path: str, targe
       print(f"Download error on attempt {attempt}/{n_attempts} for {repo_id=} {revision=} {path=} {target_dir=}")
       traceback.print_exc()
       await asyncio.sleep(min(8, 0.1 * (2 ** attempt)))
+  # This should never be reached due to the raise above, but satisfies type checker
+  raise RuntimeError("All download attempts failed")
 
 async def _download_file(repo_id: str, revision: str, path: str, target_dir: Path, on_progress: Callable[[int, int], None] = lambda _, __: None) -> Path:
   if await aios.path.exists(target_dir/path): return target_dir/path
@@ -193,9 +196,16 @@ def calculate_repo_progress(shard: Shard, repo_id: str, revision: str, file_prog
 
 async def get_weight_map(repo_id: str, revision: str = "main") -> Dict[str, str]:
   target_dir = (await ensure_exo_tmp())/repo_id.replace("/", "--")
-  index_file = await download_file_with_retry(repo_id, revision, "model.safetensors.index.json", target_dir)
-  async with aiofiles.open(index_file, 'r') as f: index_data = json.loads(await f.read())
-  return index_data.get("weight_map")
+  
+  # First try to get the sharded model index
+  try:
+    index_file = await download_file_with_retry(repo_id, revision, "model.safetensors.index.json", target_dir)
+    async with aiofiles.open(index_file, 'r') as f: index_data = json.loads(await f.read())
+    return index_data.get("weight_map")
+  except FileNotFoundError:
+    # If index file doesn't exist, it's likely a single-file model
+    # Return a weight map that maps all weights to model.safetensors
+    return {"*": "model.safetensors"}
 
 async def resolve_allow_patterns(shard: Shard, inference_engine_classname: str) -> List[str]:
   try:
@@ -278,7 +288,7 @@ class SingletonShardDownloader(ShardDownloader):
     finally:
       if shard in self.active_downloads and self.active_downloads[shard].done(): del self.active_downloads[shard]
 
-  async def get_shard_download_status(self, inference_engine_name: str) -> AsyncIterator[tuple[Path, RepoProgressEvent]]:
+  async def get_shard_download_status(self, inference_engine_name: str):
     async for path, status in self.shard_downloader.get_shard_download_status(inference_engine_name):
       yield path, status
 
@@ -300,7 +310,7 @@ class CachedShardDownloader(ShardDownloader):
     self.cache[(inference_engine_name, shard)] = target_dir
     return target_dir
 
-  async def get_shard_download_status(self, inference_engine_name: str) -> AsyncIterator[tuple[Path, RepoProgressEvent]]:
+  async def get_shard_download_status(self, inference_engine_name: str):
     async for path, status in self.shard_downloader.get_shard_download_status(inference_engine_name):
       yield path, status
 
@@ -317,7 +327,7 @@ class NewShardDownloader(ShardDownloader):
     target_dir, _ = await download_shard(shard, inference_engine_name, self.on_progress, max_parallel_downloads=self.max_parallel_downloads)
     return target_dir
 
-  async def get_shard_download_status(self, inference_engine_name: str) -> AsyncIterator[tuple[Path, RepoProgressEvent]]:
+  async def get_shard_download_status(self, inference_engine_name: str):
     if DEBUG >= 2: print("Getting shard download status for", inference_engine_name)
     tasks = []
     for model_id in get_supported_models([[inference_engine_name]]):

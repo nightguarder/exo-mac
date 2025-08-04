@@ -1,5 +1,6 @@
 from exo.inference.shard import Shard
 from typing import Optional, List
+import os
 
 model_cards = {
   ### llama
@@ -150,6 +151,81 @@ model_cards = {
   # phi
   "phi-3.5-mini": { "layers": 32, "repo": { "MLXDynamicShardInferenceEngine": "mlx-community/Phi-3.5-mini-instruct-4bit", }, },
   "phi-4": { "layers": 40, "repo": { "MLXDynamicShardInferenceEngine": "mlx-community/phi-4-4bit", }, },
+  # HuggingFace supported models
+  "microsoft-dialoGPT-medium": {
+    "layers": 24,
+    "repo": {
+       "HuggingFaceInferenceEngine": "microsoft/DialoGPT-medium",
+    },
+  },
+  "huggingface-codellama-7b": {
+    "layers": 32,
+    "repo": {
+       "HuggingFaceInferenceEngine": "codellama/CodeLlama-7b-hf",
+    },
+  },
+  "mistral-7b-instruct": {
+    "layers": 32,
+    "repo": {
+       "MLXDynamicShardInferenceEngine": "mlx-community/Mistral-7B-Instruct-v0.1-4bit",
+       "TinygradDynamicShardInferenceEngine": "mistralai/Mistral-7B-Instruct-v0.1",
+       "HuggingFaceInferenceEngine": "mistralai/Mistral-7B-Instruct-v0.1",
+    },
+  },
+  "huggingface-gpt2": {
+    "layers": 12,
+    "repo": {
+       "HuggingFaceInferenceEngine": "gpt2",
+    },
+  },
+  "huggingface-gpt2-medium": {
+    "layers": 24,
+    "repo": {
+       "HuggingFaceInferenceEngine": "gpt2-medium",
+    },
+  },
+  "huggingface-bloom-560m": {
+    "layers": 24,
+    "repo": {
+       "HuggingFaceInferenceEngine": "bigscience/bloom-560m",
+    },
+  },
+  "huggingface-phi-2": {
+    "layers": 32,
+    "repo": {
+       "HuggingFaceInferenceEngine": "microsoft/phi-2",
+    },
+  },
+  "huggingface-falcon-7b": {
+    "layers": 32,
+    "repo": {
+       "HuggingFaceInferenceEngine": "tiiuae/falcon-7b-instruct",
+    },
+  },
+  "huggingface-flan-t5-large": {
+    "layers": 24,
+    "repo": {
+       "HuggingFaceInferenceEngine": "google/flan-t5-large",
+    },
+  },
+  "huggingface-codegen-2b": {
+    "layers": 24,
+    "repo": {
+       "HuggingFaceInferenceEngine": "Salesforce/codegen-2B-mono",
+    },
+  },
+  "huggingface-distilgpt2": {
+    "layers": 6,
+    "repo": {
+       "HuggingFaceInferenceEngine": "distilbert/distilgpt2",
+    },
+  },
+  "huggingface-opt-1.3b": {
+    "layers": 24,
+    "repo": {
+       "HuggingFaceInferenceEngine": "facebook/opt-1.3b",
+    },
+  },
   # dummy
   "dummy": { "layers": 8, "repo": { "DummyInferenceEngine": "dummy", }, },
 }
@@ -198,6 +274,18 @@ pretty_name = {
   "llama-3-8b": "Llama 3 8B",
   "llama-3-70b": "Llama 3 70B",
   "stable-diffusion-2-1-base": "Stable Diffusion 2.1",
+  "huggingface-gpt2": "GPT-2 (HuggingFace)",
+  "huggingface-gpt2-medium": "GPT-2 Medium (HuggingFace)",
+  "huggingface-bloom-560m": "BLOOM 560M (HuggingFace)",
+  "huggingface-phi-2": "Phi-2 (HuggingFace)",
+  "huggingface-falcon-7b": "Falcon 7B (HuggingFace)",
+  "huggingface-flan-t5-large": "Flan-T5 Large (HuggingFace)",
+  "huggingface-codegen-2b": "CodeGen 2B (HuggingFace)",
+  "huggingface-distilgpt2": "DistilGPT-2 (HuggingFace)",
+  "huggingface-opt-1.3b": "OPT 1.3B (HuggingFace)",
+  "huggingface-codellama-7b": "CodeLlama 7B (HuggingFace)",
+  "microsoft-dialoGPT-medium": "DialoGPT Medium (HuggingFace)",
+  "mistral-7b-instruct": "Mistral 7B Instruct",
   "deepseek-r1-distill-qwen-1.5b": "DeepSeek R1 Distill Qwen 1.5B",
   "deepseek-r1-distill-qwen-1.5b-3bit": "DeepSeek R1 Distill Qwen 1.5B (3-bit)",
   "deepseek-r1-distill-qwen-1.5b-6bit": "DeepSeek R1 Distill Qwen 1.5B (6-bit)",
@@ -232,42 +320,209 @@ pretty_name = {
   "deepseek-r1-distill-qwen-32b-6bit": "DeepSeek R1 Distill Qwen 32B (6-bit)",
 }
 
+# Dynamic model registry for runtime additions
+_dynamic_models = {}
+
+
+def add_dynamic_model(model_id: str, repo_id: str, inference_engine_name: str, layers: int = 12):
+  """
+  Dynamically add a model to the supported list after it gets downloaded.
+  This prevents issues where downloaded models aren't in the static registry.
+  
+  Args:
+    model_id: The model identifier (e.g., "huggingface-distilgpt2")
+    repo_id: The HuggingFace repository ID (e.g., "distilbert/distilgpt2")
+    inference_engine_name: The inference engine class name (e.g., "HuggingFaceInferenceEngine")
+    layers: Number of layers in the model (default: 12 for most transformer models)
+  """
+  global _dynamic_models
+  if model_id not in _dynamic_models:
+    _dynamic_models[model_id] = {
+      "layers": layers,
+      "repo": {}
+    }
+  
+  _dynamic_models[model_id]["repo"][inference_engine_name] = repo_id
+  
+  print(f"DEBUG: Added dynamic model {model_id} with repo {repo_id} for engine {inference_engine_name}")
+
+
+def get_model_info(model_id: str):
+  """Get model info from both static registry and dynamic models."""
+  # First check static registry
+  if model_id in model_cards:
+    return model_cards[model_id]
+  
+  # Then check dynamic registry
+  if model_id in _dynamic_models:
+    return _dynamic_models[model_id]
+  
+  return None
+
+
+def get_all_model_ids():
+  """Get all model IDs from both static and dynamic registries."""
+  all_models = set(model_cards.keys())
+  all_models.update(_dynamic_models.keys())
+  return list(all_models)
+
+
+def scan_huggingface_cache_and_register():
+  """
+  Scan the HuggingFace cache directory and automatically register any downloaded models
+  that aren't in our static registry.
+  """
+  cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+  if not os.path.exists(cache_dir):
+    return
+  
+  for item in os.listdir(cache_dir):
+    if item.startswith("models--"):
+      # Extract repo info from directory name (format: models--org--model-name)
+      repo_parts = item[8:].split("--")  # Remove "models--" prefix
+      if len(repo_parts) >= 2:
+        org = repo_parts[0]
+        model_name = "--".join(repo_parts[1:])  # Handle multi-part model names
+        repo_id = f"{org}/{model_name}"
+        
+        # Create a model_id for our registry
+        model_id = f"huggingface-{model_name.lower().replace('_', '-')}"
+        
+        # Check if this model is already in our static registry
+        existing_repo = get_repo(model_id, "HuggingFaceInferenceEngine")
+        if not existing_repo:
+          # Auto-register with reasonable defaults
+          layers = 12  # Default for most transformer models
+          
+          # Try to guess layer count from common model patterns
+          if "large" in model_name.lower():
+            layers = 24
+          elif "7b" in model_name.lower():
+            layers = 32
+          elif "13b" in model_name.lower():
+            layers = 40
+          elif "bloom-560m" in model_name.lower():
+            layers = 24
+          elif "phi-2" in model_name.lower():
+            layers = 32
+          elif "falcon-7b" in model_name.lower():
+            layers = 32
+          elif "distilgpt2" in model_name.lower():
+            layers = 6
+          elif "opt-1.3b" in model_name.lower():
+            layers = 24
+          
+          add_dynamic_model(model_id, repo_id, "HuggingFaceInferenceEngine", layers)
+          print(f"Auto-registered cached model: {model_id} -> {repo_id}")
+
+
+def get_repo_with_dynamic_fallback(model_id: str, inference_engine_classname: str) -> Optional[str]:
+  """
+  Enhanced version of get_repo that also checks dynamic models and can auto-register
+  from HuggingFace cache if needed.
+  """
+  print(f"DEBUG: get_repo_with_dynamic_fallback called with model_id='{model_id}', engine='{inference_engine_classname}'")
+  
+  # First try static registry directly (not via get_repo to avoid recursion)
+  static_repo = model_cards.get(model_id, {}).get("repo", {}).get(inference_engine_classname, None)
+  if static_repo:
+    print(f"DEBUG: Found in static registry: {static_repo}")
+    return static_repo
+  
+  # Then try dynamic registry
+  if model_id in _dynamic_models:
+    dynamic_repo = _dynamic_models[model_id].get("repo", {}).get(inference_engine_classname, None)
+    if dynamic_repo:
+      print(f"DEBUG: Found in dynamic registry: {dynamic_repo}")
+      return dynamic_repo
+  
+  # If not found and it's a HuggingFace model, try to auto-register from cache
+  if inference_engine_classname == "HuggingFaceInferenceEngine":
+    print("DEBUG: Scanning HuggingFace cache for auto-registration")
+    scan_huggingface_cache_and_register()
+    # Try dynamic registry again after scanning
+    if model_id in _dynamic_models:
+      final_repo = _dynamic_models[model_id].get("repo", {}).get(inference_engine_classname, None)
+      if final_repo:
+        print(f"DEBUG: Found after cache scan: {final_repo}")
+        return final_repo
+  
+  print(f"DEBUG: No repo found for model_id='{model_id}', engine='{inference_engine_classname}'")
+  return None
+
+
+def build_base_shard(model_id: str, inference_engine_name: Optional[str] = None, start_layer: int = 0, end_layer: Optional[int] = None, n_layers: Optional[int] = None):
+  """Build a base shard for the given model."""
+  
+  # Use enhanced function that can auto-register models
+  model_info = get_model_info(model_id)
+  if not model_info:
+    raise ValueError(f"Model {model_id} not found in model cards")
+  
+  total_layers = model_info["layers"]
+  
+  if end_layer is None:
+    end_layer = total_layers - 1
+  if n_layers is None:
+    n_layers = total_layers
+    
+  return Shard(
+    model_id=model_id,
+    start_layer=start_layer,
+    end_layer=min(end_layer if end_layer is not None else total_layers - 1, total_layers - 1),
+    n_layers=n_layers if n_layers is not None else total_layers
+  )
+
+
+def build_full_shard(model_id: str, inference_engine_name: Optional[str] = None):
+  """Build a full shard that covers the entire model."""
+  
+  # Use enhanced function that can auto-register models
+  model_info = get_model_info(model_id)
+  if not model_info:
+    raise ValueError(f"Model {model_id} not found in model cards")
+  
+  total_layers = model_info["layers"]
+  
+  return build_base_shard(model_id, inference_engine_name, 0, total_layers - 1, total_layers)
+
+
 def get_repo(model_id: str, inference_engine_classname: str) -> Optional[str]:
-  return model_cards.get(model_id, {}).get("repo", {}).get(inference_engine_classname, None)
+  """
+  Get the repository ID for a given model and inference engine.
+  Now with dynamic model registration support.
+  """
+  return get_repo_with_dynamic_fallback(model_id, inference_engine_classname)
 
 def get_pretty_name(model_id: str) -> Optional[str]:
   return pretty_name.get(model_id, None)
 
-def build_base_shard(model_id: str, inference_engine_classname: str) -> Optional[Shard]:
-  repo = get_repo(model_id, inference_engine_classname)
-  n_layers = model_cards.get(model_id, {}).get("layers", 0)
-  if repo is None or n_layers < 1:
-    return None
-  return Shard(model_id, 0, 0, n_layers)
-
-def build_full_shard(model_id: str, inference_engine_classname: str) -> Optional[Shard]:
-  base_shard = build_base_shard(model_id, inference_engine_classname)
-  if base_shard is None: return None
-  return Shard(base_shard.model_id, 0, base_shard.n_layers - 1, base_shard.n_layers)
-
-def get_supported_models(supported_inference_engine_lists: Optional[List[List[str]]] = None) -> List[str]:
-  if not supported_inference_engine_lists:
+def get_supported_models(engine_lists):
+  """Get supported models for the given engine lists."""
+  if not engine_lists:
+    # If no engine lists provided, return all models
     return list(model_cards.keys())
-
-  from exo.inference.inference_engine import inference_engine_classes
-  supported_inference_engine_lists = [
-    [inference_engine_classes[engine] if engine in inference_engine_classes else engine for engine in engine_list]
-    for engine_list in supported_inference_engine_lists
-  ]
-
-  def has_any_engine(model_info: dict, engine_list: List[str]) -> bool:
-    return any(engine in model_info.get("repo", {}) for engine in engine_list)
-
-  def supports_all_engine_lists(model_info: dict) -> bool:
-    return all(has_any_engine(model_info, engine_list)
-              for engine_list in supported_inference_engine_lists)
-
-  return [
-    model_id for model_id, model_info in model_cards.items()
-    if supports_all_engine_lists(model_info)
-  ]
+  
+  supported_models = set()
+  
+  for engine_list in engine_lists:
+    for model_id, model_info in model_cards.items():
+      repo_info = model_info.get("repo", {})
+      
+      # Check if any of the engines in the list support this model
+      for engine in engine_list:
+        if engine in repo_info:
+          supported_models.add(model_id)
+          break
+    
+    # Also check dynamic models
+    for model_id, model_info in _dynamic_models.items():
+      repo_info = model_info.get("repo", {})
+      
+      # Check if any of the engines in the list support this model
+      for engine in engine_list:
+        if engine in repo_info:
+          supported_models.add(model_id)
+          break
+  
+  return list(supported_models)

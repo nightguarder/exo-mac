@@ -113,7 +113,8 @@ def remap_messages(messages: List[Message]) -> List[Message]:
     for content in message.content:
       if isinstance(content, dict):
         if content.get("type") in ["image_url", "image"]:
-          image_url = content.get("image_url", {}).get("url") or content.get("image")
+          image_url_obj = content.get("image_url", {})
+          image_url = (image_url_obj.get("url") if isinstance(image_url_obj, dict) else image_url_obj) or content.get("image")
           if image_url:
             last_image = {"type": "image", "image": image_url}
             remapped_content.append({"type": "text", "text": "[An image was uploaded but is not displayed here]"})
@@ -137,6 +138,33 @@ def remap_messages(messages: List[Message]) -> List[Message]:
 
 def build_prompt(tokenizer, _messages: List[Message], tools: Optional[List[Dict]] = None):
   messages = remap_messages(_messages)
+  
+  # Check if tokenizer has a chat template
+  if not hasattr(tokenizer, 'chat_template') or tokenizer.chat_template is None:
+    if DEBUG >= 2: print("!!! No chat template available, using simple concatenation")
+    # Fallback: Simple concatenation for models without chat templates
+    prompt_parts = []
+    for message in messages:
+      role = message.role.title()  # System, User, Assistant
+      content = message.content
+      if isinstance(content, list):
+        # Handle multimodal content by extracting text parts
+        text_content = ""
+        for part in content:
+          if isinstance(part, dict) and part.get("type") == "text":
+            text_part = part.get("text", "")
+            if isinstance(text_part, str):
+              text_content += text_part
+          elif isinstance(part, str):
+            text_content += part
+        content = text_content
+      prompt_parts.append(f"{role}: {content}")
+    
+    prompt = "\n".join(prompt_parts) + "\nAssistant:"
+    if DEBUG >= 3: print(f"!!! Simple Prompt: {prompt}")
+    return prompt
+
+  # Use chat template if available
   chat_template_args = {"conversation": [m.to_dict() for m in messages], "tokenize": False, "add_generation_prompt": True}
   if tools: 
     chat_template_args["tools"] = tools
@@ -145,16 +173,41 @@ def build_prompt(tokenizer, _messages: List[Message], tools: Optional[List[Dict]
     prompt = tokenizer.apply_chat_template(**chat_template_args)
     if DEBUG >= 3: print(f"!!! Prompt: {prompt}")
     return prompt
-  except UnicodeEncodeError:
-    # Handle Unicode encoding by ensuring everything is UTF-8
-    chat_template_args["conversation"] = [
-      {k: v.encode('utf-8').decode('utf-8') if isinstance(v, str) else v 
-       for k, v in m.to_dict().items()}
-      for m in messages
-    ]
-    prompt = tokenizer.apply_chat_template(**chat_template_args)
-    if DEBUG >= 3: print(f"!!! Prompt (UTF-8 encoded): {prompt}")
-    return prompt
+  except (UnicodeEncodeError, ValueError) as e:
+    if "chat_template" in str(e).lower():
+      if DEBUG >= 2: print(f"!!! Chat template error: {e}, falling back to simple format")
+      # Fallback for template-related errors
+      prompt_parts = []
+      for message in messages:
+        role = message.role.title()
+        content = message.content
+        if isinstance(content, list):
+          text_content = ""
+          for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+              text_part = part.get("text", "")
+              if isinstance(text_part, str):
+                text_content += text_part
+            elif isinstance(part, str):
+              text_content += part
+          content = text_content
+        prompt_parts.append(f"{role}: {content}")
+      
+      prompt = "\n".join(prompt_parts) + "\nAssistant:"
+      if DEBUG >= 3: print(f"!!! Fallback Prompt: {prompt}")
+      return prompt
+    elif isinstance(e, UnicodeEncodeError):
+      # Handle Unicode encoding by ensuring everything is UTF-8
+      chat_template_args["conversation"] = [
+        {k: v.encode('utf-8').decode('utf-8') if isinstance(v, str) else v 
+         for k, v in m.to_dict().items()}
+        for m in messages
+      ]
+      prompt = tokenizer.apply_chat_template(**chat_template_args)
+      if DEBUG >= 3: print(f"!!! Prompt (UTF-8 encoded): {prompt}")
+      return prompt
+    else:
+      raise
 
 
 def parse_message(data: dict):
@@ -167,7 +220,7 @@ def parse_chat_request(data: dict, default_model: str):
   return ChatCompletionRequest(
     data.get("model", default_model),
     [parse_message(msg) for msg in data["messages"]],
-    data.get("temperature", 0.0),
+    data.get("temperature", 0.7),  # Default to 0.7 instead of 0.0
     data.get("tools", None),
   )
 
@@ -185,7 +238,7 @@ class ChatGPTAPI:
     node: Node,
     inference_engine_classname: str,
     response_timeout: int = 90,
-    on_chat_completion_request: Callable[[str, ChatCompletionRequest, str], None] = None,
+    on_chat_completion_request: Optional[Callable[[str, ChatCompletionRequest, str], None]] = None,
     default_model: Optional[str] = None,
     system_prompt: Optional[str] = None,
     local_mode: bool = False
@@ -204,7 +257,11 @@ class ChatGPTAPI:
 
     # Get the callback system and register our handler
     self.token_callback = node.on_token.register("chatgpt-api-token-handler")
-    self.token_callback.on_next(lambda _request_id, tokens, is_finished: asyncio.create_task(self.handle_tokens(_request_id, tokens, is_finished)))
+    
+    def sync_handle_tokens(_request_id, tokens, is_finished):
+      asyncio.create_task(self.handle_tokens(_request_id, tokens, is_finished))
+    
+    self.token_callback.on_next(sync_handle_tokens)
     self.system_prompt = system_prompt
 
     cors = aiohttp_cors.setup(self.app)
@@ -224,7 +281,7 @@ class ChatGPTAPI:
     cors.add(self.app.router.add_get("/v1/download/progress", self.handle_get_download_progress), {"*": cors_options})
     cors.add(self.app.router.add_get("/modelpool", self.handle_model_support), {"*": cors_options})
     cors.add(self.app.router.add_get("/healthcheck", self.handle_healthcheck), {"*": cors_options})
-    cors.add(self.app.router.add_post("/quit", self.handle_quit), {"*": cors_options})
+    cors.add(self.app.router.add_post("/quit", self.handle_quit), {"*": cors_options})  # type: ignore
     cors.add(self.app.router.add_delete("/models/{model_name}", self.handle_delete_model), {"*": cors_options})
     cors.add(self.app.router.add_get("/initial_models", self.handle_get_initial_models), {"*": cors_options})
     cors.add(self.app.router.add_post("/create_animation", self.handle_create_animation), {"*": cors_options})
@@ -243,8 +300,8 @@ class ChatGPTAPI:
     self.images_dir.mkdir(parents=True, exist_ok=True)
     self.app.router.add_static('/images/', self.images_dir, name='static_images')
 
-    self.app.middlewares.append(self.timeout_middleware)
-    self.app.middlewares.append(self.log_request)
+    self.app.middlewares.append(self.timeout_middleware)  # type: ignore
+    self.app.middlewares.append(self.log_request)  # type: ignore
 
   async def handle_quit(self, request):
     if DEBUG >= 1: print("Received quit signal")
@@ -352,7 +409,7 @@ class ChatGPTAPI:
         if chat_request.model not in local_models:
           return web.json_response({"detail": f"Model {chat_request.model} is not available in local mode."}, status=400)
     else:
-        engine_class_name = self.inference_engine_classname
+        engine_class_name = get_inference_engine_class_name(self.inference_engine_classname)
     
     shard = build_base_shard(chat_request.model, engine_class_name)
     if not shard:
@@ -363,16 +420,31 @@ class ChatGPTAPI:
       )
 
     repo_id = get_repo(shard.model_id, engine_class_name)
-    if repo_id is None:
+    if DEBUG >= 3: print(f"[ChatGPTAPI] shard.model_id={shard.model_id}, engine_class_name={engine_class_name}, repo_id='{repo_id}'")
+    if repo_id is None or repo_id == "":
       return web.json_response({"error": f"No repo found for model: {chat_request.model}"}, status=400)
-    tokenizer = await resolve_tokenizer(repo_id)
+    
+    print(f"[ChatGPTAPI] DEBUG: About to resolve tokenizer for repo_id='{repo_id}'")
+    try:
+      tokenizer = await resolve_tokenizer(repo_id)
+      print(f"[ChatGPTAPI] DEBUG: Tokenizer resolved successfully: {type(tokenizer)}")
+    except Exception as e:
+      print(f"[ChatGPTAPI] DEBUG: Error resolving tokenizer: {e}")
+      raise
+    
     if DEBUG >= 4: print(f"[ChatGPTAPI] Resolved tokenizer: {tokenizer}")
 
     # Add system prompt if set
     if self.system_prompt and not any(msg.role == "system" for msg in chat_request.messages):
       chat_request.messages.insert(0, Message("system", self.system_prompt))
 
-    prompt = build_prompt(tokenizer, chat_request.messages, chat_request.tools)
+    print(f"[ChatGPTAPI] DEBUG: About to build prompt")
+    try:
+      prompt = build_prompt(tokenizer, chat_request.messages, chat_request.tools)
+      print(f"[ChatGPTAPI] DEBUG: Prompt built successfully")
+    except Exception as e:
+      print(f"[ChatGPTAPI] DEBUG: Error building prompt: {e}")
+      raise
     request_id = str(uuid.uuid4())
     if self.on_chat_completion_request:
       try:
@@ -382,8 +454,10 @@ class ChatGPTAPI:
 
     if DEBUG >= 2: print(f"[ChatGPTAPI] Processing prompt: {request_id=} {shard=} {prompt=}")
 
+    print(f"[ChatGPTAPI] DEBUG: About to call node.process_prompt")
     try:
       await asyncio.wait_for(asyncio.shield(asyncio.create_task(self.node.process_prompt(shard, prompt, request_id=request_id))), timeout=self.response_timeout)
+      print(f"[ChatGPTAPI] DEBUG: node.process_prompt completed successfully")
 
       if DEBUG >= 2: print(f"[ChatGPTAPI] Waiting for response to finish. timeout={self.response_timeout}s")
 
@@ -410,7 +484,11 @@ class ChatGPTAPI:
 
             eos_token_id = None
             if not eos_token_id and hasattr(tokenizer, "eos_token_id"): eos_token_id = tokenizer.eos_token_id
-            if not eos_token_id and hasattr(tokenizer, "_tokenizer"): eos_token_id = tokenizer.special_tokens_map.get("eos_token_id")
+            if not eos_token_id:
+              try:
+                eos_token_id = tokenizer.special_tokens_map.get("eos_token_id")  # type: ignore
+              except AttributeError:
+                pass
 
             finish_reason = None
             if is_finished: finish_reason = "stop" if tokens[-1] == eos_token_id else "length"
@@ -463,7 +541,11 @@ class ChatGPTAPI:
         finish_reason = "length"
         eos_token_id = None
         if not eos_token_id and hasattr(tokenizer, "eos_token_id"): eos_token_id = tokenizer.eos_token_id
-        if not eos_token_id and hasattr(tokenizer, "_tokenizer"): eos_token_id = tokenizer.special_tokens_map.get("eos_token_id")
+        if not eos_token_id:
+          try:
+            eos_token_id = tokenizer.special_tokens_map.get("eos_token_id")  # type: ignore
+          except AttributeError:
+            pass
         if DEBUG >= 2: print(f"Checking if end of tokens result {tokens[-1]=} is {eos_token_id=}")
         if tokens[-1] == eos_token_id:
           finish_reason = "stop"
@@ -472,8 +554,12 @@ class ChatGPTAPI:
     except asyncio.TimeoutError:
       return web.json_response({"detail": "Response generation timed out"}, status=408)
     except Exception as e:
-      if DEBUG >= 2: traceback.print_exc()
-      return web.json_response({"detail": f"Error processing prompt (see logs with DEBUG>=2): {str(e)}"}, status=500)
+      if DEBUG >= 2: 
+        traceback.print_exc()
+      else:
+        print(f"[ChatGPTAPI] Error processing prompt: {e}")
+        print(f"[ChatGPTAPI] Error type: {type(e).__name__}")
+      return web.json_response({"detail": f"Error processing prompt: {str(e)} (type: {type(e).__name__})"}, status=500)
 
   async def handle_post_image_generations(self, request):
     data = await request.json()
@@ -559,13 +645,17 @@ class ChatGPTAPI:
 
       if stream_task:
         # Wait for the stream task to complete before returning
-        await stream_task
+        await stream_task  # type: ignore
 
       return response
 
     except Exception as e:
-      if DEBUG >= 2: traceback.print_exc()
-      return web.json_response({"detail": f"Error processing prompt (see logs with DEBUG>=2): {str(e)}"}, status=500)
+      if DEBUG >= 2: 
+        traceback.print_exc()
+      else:
+        print(f"[ChatGPTAPI] Error in streaming handler: {e}")
+        print(f"[ChatGPTAPI] Error type: {type(e).__name__}")
+      return web.json_response({"detail": f"Error processing prompt: {str(e)} (type: {type(e).__name__})"}, status=500)
 
   async def handle_delete_model(self, request):
     model_id = request.match_info.get('model_name')
@@ -625,10 +715,39 @@ class ChatGPTAPI:
       data = await request.json()
       model_name = data.get("model")
       if not model_name: return web.json_response({"error": "model parameter is required"}, status=400)
-      if model_name not in model_cards: return web.json_response({"error": f"Invalid model: {model_name}. Supported models: {list(model_cards.keys())}"}, status=400)
+      
+      # Check if model exists in static registry
+      if model_name not in model_cards:
+        # For HuggingFace models, try to auto-register them
+        if self.inference_engine_classname == "HuggingFaceInferenceEngine" and model_name.startswith("huggingface-"):
+          from exo.models import add_dynamic_model, get_repo
+          
+          # Extract the actual HuggingFace repo from the model name
+          # e.g., "huggingface-distilgpt2" -> "distilbert/distilgpt2"
+          if model_name == "huggingface-distilgpt2":
+            repo_id = "distilbert/distilgpt2"
+            layers = 6
+          elif model_name == "huggingface-gpt2":
+            repo_id = "gpt2"
+            layers = 12
+          elif model_name == "huggingface-gpt2-medium":
+            repo_id = "gpt2-medium"
+            layers = 24
+          else:
+            # Try to guess the repo ID by removing the "huggingface-" prefix
+            repo_id = model_name.replace("huggingface-", "").replace("-", "/", 1)
+            layers = 12  # Default
+          
+          # Add to dynamic registry
+          add_dynamic_model(model_name, repo_id, self.inference_engine_classname, layers)
+          print(f"Auto-registered model {model_name} with repo {repo_id}")
+        else:
+          return web.json_response({"error": f"Invalid model: {model_name}. Supported models: {list(model_cards.keys())}"}, status=400)
+      
       shard = build_full_shard(model_name, self.inference_engine_classname)
       if not shard: return web.json_response({"error": f"Could not build shard for model {model_name}"}, status=400)
-      asyncio.create_task(self.node.inference_engine.shard_downloader.ensure_shard(shard, self.inference_engine_classname))
+      engine_class_name = get_inference_engine_class_name(self.inference_engine_classname)
+      asyncio.create_task(self.node.shard_downloader.ensure_shard(shard, engine_class_name))
 
       return web.json_response({"status": "success", "message": f"Download started for model: {model_name}"})
     except Exception as e:
@@ -664,8 +783,15 @@ class ChatGPTAPI:
     W, H = (dim - dim%64 for dim in (img.width, img.height))
     if W != img.width or H != img.height:
       if DEBUG >= 2: print(f"Warning: image shape is not divisible by 64, downsampling to {W}x{H}")
-      img = img.resize((W, H), Image.NEAREST)  # use desired downsampling filter
+      img = img.resize((W, H), Image.Resampling.NEAREST)  # use desired downsampling filter
     img = mx.array(np.array(img))
-    img = (img[:, :, :3].astype(mx.float32)/255)*2 - 1
+    # Convert to float32 and normalize
+    if platform.system().lower() == "darwin" and platform.machine().lower() == "arm64":
+      # MLX path - use MLX's dtype
+      img = img[:, :, :3].astype(mx.float32)  # type: ignore
+    else:
+      # NumPy path - use numpy's dtype
+      img = img[:, :, :3].astype(np.float32)  # type: ignore
+    img = (img/255)*2 - 1
     img = img[None]
     return img

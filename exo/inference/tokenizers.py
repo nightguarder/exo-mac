@@ -31,7 +31,12 @@ async def resolve_tokenizer(repo_id: Union[str, PathLike]):
   try:
     if local_path and await aios.path.exists(local_path):
       if DEBUG >= 2: print(f"Resolving tokenizer for {repo_id=} from {local_path=}")
-      return await _resolve_tokenizer(local_path)
+      # Try local path first, but fallback to remote if it fails
+      try:
+        return await _resolve_tokenizer(local_path)
+      except Exception as e:
+        if DEBUG >= 2: print(f"Local tokenizer resolution failed for {local_path=}, falling back to remote {repo_id=}. Error: {e}")
+        return await _resolve_tokenizer(repo_id)
   except:
     if DEBUG >= 5: print(f"Local check for {local_path=} failed. Resolving tokenizer for {repo_id=} normally...")
     if DEBUG >= 5: traceback.print_exc()

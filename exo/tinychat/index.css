@@ -844,3 +844,62 @@ main {
   color: var(--secondary-color-transparent);
   font-family: monospace;
 }
+
+.network-status {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: var(--primary-bg-color);
+  border-radius: 8px;
+  border: 1px solid var(--secondary-color-transparent);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.9em;
+}
+
+.status-indicator.online {
+  color: #4CAF50;
+}
+
+.status-indicator.offline {
+  color: #f44336;
+}
+
+.status-indicator.checking {
+  color: #ff9800;
+}
+
+.offline-models-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85em;
+  color: var(--secondary-color-transparent);
+}
+
+.offline-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: #ff9800;
+  color: white;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  font-size: 0.9em;
+}
+
+.model-download-button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--secondary-color);
+}
+
+.model-download-button.disabled:hover {
+  transform: none;
+  background-color: var(--secondary-color);
+}

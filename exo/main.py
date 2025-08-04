@@ -82,7 +82,7 @@ parser.add_argument("--wait-for-peers", type=int, default=0, help="Number of pee
 parser.add_argument("--chatgpt-api-port", type=int, default=52415, help="ChatGPT API port")
 parser.add_argument("--chatgpt-api-response-timeout", type=int, default=900, help="ChatGPT API response timeout in seconds")
 parser.add_argument("--max-generate-tokens", type=int, default=10000, help="Max tokens to generate in each request")
-parser.add_argument("--inference-engine", type=str, default=None, help="Inference engine to use (mlx, tinygrad, or dummy)")
+parser.add_argument("--inference-engine", type=str, default=None, help="Inference engine to use (mlx, tinygrad, huggingface, or dummy)")
 parser.add_argument("--local-mode", action="store_true", help="Enable local mode - runs with dummy model and uses locally downloaded models")
 parser.add_argument("--disable-tui", action=argparse.BooleanOptionalAction, help="Disable TUI")
 parser.add_argument("--run-model", type=str, help="Specify a model to run directly")
@@ -320,7 +320,9 @@ async def main():
       await train_model_cli(node, model_name, dataloader, args.batch_size, args.iters, save_interval=args.save_every, checkpoint_dir=args.save_checkpoint_dir)
 
   else:
-    api = ChatGPTAPI(node, inference_engine_name, args.chatgpt_api_response_timeout, default_model=args.default_model, system_prompt=args.system_prompt, local_mode=args.local_mode)
+    # Use the actual inference engine class name for API compatibility
+    inference_engine_class_name = inference_engine.__class__.__name__
+    api = ChatGPTAPI(node, inference_engine_class_name, args.chatgpt_api_response_timeout, default_model=args.default_model, system_prompt=args.system_prompt, local_mode=args.local_mode)
     asyncio.create_task(api.run(port=args.chatgpt_api_port))  # Start the API server as a non-blocking task
     await asyncio.Event().wait()
 

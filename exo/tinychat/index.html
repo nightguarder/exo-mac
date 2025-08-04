@@ -40,14 +40,41 @@
         </div>
         <!-- Topology visualization will be rendered here -->
       </div>
+      
+      <!-- Network Status Indicator -->
+      <div class="network-status" x-show="true">
+        <div class="status-indicator" :class="networkStatus">
+          <i class="fas" :class="{
+            'fa-wifi': networkStatus === 'online',
+            'fa-wifi-slash': networkStatus === 'offline', 
+            'fa-spinner fa-spin': networkStatus === 'checking'
+          }"></i>
+          <span x-text="networkStatus === 'online' ? 'Online' : 
+                       networkStatus === 'offline' ? 'Offline' : 'Checking...'"></span>
+        </div>
+        <div class="offline-models-count" x-show="offlineMode">
+          <i class="fas fa-download"></i>
+          <span x-text="`${getOfflineModelCount()} models available offline`"></span>
+        </div>
+      </div>
     </div>
 
     <h2 class="megrim-regular" style="margin-bottom: 20px;">Models</h2>
       <div style="display: flex; align-items: center; margin-bottom: 10px;">
-          <label style="margin-right: 5px;">
-              <input type="checkbox" x-model="showDownloadedOnly" style="margin-right: 5px;">
+          <label style="margin-right: 15px;">
+              <input type="checkbox" x-model="showDownloadedOnly" style="margin-right: 5px;" :disabled="offlineMode">
               Downloaded only
           </label>
+          <label x-show="!offlineMode" style="margin-right: 5px;">
+              <input type="checkbox" x-model="offlineMode" style="margin-right: 5px;">
+              Force offline mode
+          </label>
+      </div>
+      
+      <!-- Offline Mode Banner -->
+      <div class="offline-banner" x-show="offlineMode">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span>Offline Mode: Only downloaded models are available</span>
       </div>
 
     <!-- Loading indicator -->
@@ -57,7 +84,7 @@
     </div>
 
     <!-- Group models by prefix -->
-    <template x-for="[mainPrefix, subGroups] in Object.entries(groupModelsByPrefix(models))" :key="mainPrefix">
+    <template x-for="[mainPrefix, subGroups] in Object.entries(groupModelsByPrefix(models, showDownloadedOnly, offlineMode))" :key="mainPrefix">
         <div class="model-group">
             <div class="model-group-header" @click="toggleGroup(mainPrefix)">
                 <div class="group-header-content">
@@ -111,9 +138,12 @@
                                                 <template x-if="!model.loading && (model.download_percentage === null || model.download_percentage < 100) && !downloadProgress?.some(p => !p.isComplete)">
                                                     <button
                                                         @click.stop="handleDownload(key)"
-                                                        class="model-download-button">
+                                                        class="model-download-button"
+                                                        :disabled="offlineMode"
+                                                        :class="{ 'disabled': offlineMode }">
                                                         <i class="fas fa-download"></i>
-                                                        <span x-text="(model.download_percentage > 0 && model.download_percentage < 100) ? 'Continue Downloading' : 'Download'"></span>
+                                                        <span x-text="offlineMode ? 'Offline - Cannot Download' : 
+                                                                     (model.download_percentage > 0 && model.download_percentage < 100) ? 'Continue Downloading' : 'Download'"></span>
                                                     </button>
                                                 </template>
                                             </div>

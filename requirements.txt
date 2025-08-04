@@ -28,4 +28,4 @@ mlx==0.26.1
 mlx-lm==0.21.1
 
 # Additional ML frameworks
-# torch  # Uncomment if needed for specific models
+torch>=2.0.0  # Required for HuggingFace inference engine

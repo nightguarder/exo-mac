@@ -27,7 +27,7 @@ class ShardDownloader(ABC):
     pass
 
   @abstractmethod
-  async def get_shard_download_status(self, inference_engine_name: str) -> AsyncIterator[tuple[Path, RepoProgressEvent]]:
+  def get_shard_download_status(self, inference_engine_name: str) -> AsyncIterator[tuple[Path, RepoProgressEvent]]:
     """Get the download status of shards.
     
     Returns:
