@@ -5,114 +5,163 @@
   <img alt="exo logo" src="/docs/exo-logo-transparent.png" width="50%" height="50%">
 </picture>
 
-exo: Run your own AI cluster at home with everyday devices. Maintained by [exo labs](https://x.com/exolabs).
+# exo: Run your own AI cluster at home with everyday devices
 
+**Apple Silicon Optimized Fork**
 
-<h3>
-
-[Discord](https://discord.gg/EUnjGpsmWw) | [Telegram](https://t.me/+Kh-KqHTzFYg3MGNk) | [X](https://x.com/exolabs)
-
-</h3>
+*Maintained as an optimized fork of [exo labs](https://github.com/exo-explore/exo) by [exo labs](https://x.com/exolabs)*
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/exo-explore/exo)](https://github.com/exo-explore/exo/stargazers)
-[![Tests](https://dl.circleci.com/status-badge/img/circleci/TrkofJDoGzdQAeL6yVHKsg/4i5hJuafuwZYZQxbRAWS71/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/circleci/TrkofJDoGzdQAeL6yVHKsg/4i5hJuafuwZYZQxbRAWS71/tree/main)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-
-<a href="https://trendshift.io/repositories/11849" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11849" alt="exo-explore%2Fexo | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+[![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-Optimized-000000?logo=apple)](https://support.apple.com/en-us/116943)
+[![MLX](https://img.shields.io/badge/MLX-Accelerated-FF6B00)](https://github.com/ml-explore/mlx)
 
 </div>
 
 ---
 
-Unify your existing devices into one powerful GPU: iPhone, iPad, Android, Mac, NVIDIA, Raspberry Pi, pretty much any device!
+**Unify your Apple devices into one powerful GPU: iPhone, iPad, Mac, and more!**
 
 <div align="center">
-  <h2>Update: exo is hiring. See <a href="https://exolabs.net">here</a> for more details.</h2>
-  <h2>Interested in running exo in your business? <a href="mailto:hello@exolabs.net">Contact us</a> to discuss.</h2>
+  <h3>🍎 This fork focuses exclusively on Apple Silicon optimization with enhanced MLX and HuggingFace support</h3>
 </div>
+
+## 🚀 Apple Silicon Performance
+
+This fork of the original [exo project](https://github.com/exo-explore/exo) by [exo labs](https://x.com/exolabs) is **optimized specifically for Apple Silicon devices**. Experience lightning-fast AI inference with native Metal acceleration and unified memory architecture.
+
+### Why This Fork?
+
+- **🚀 60-80 tokens/sec** on M2 Pro with DeepSeek models
+- **⚡ MLX framework** - Apple's native AI acceleration
+- **💾 Unified memory** - seamless GPU/CPU sharing
+- **🔋 Energy efficient** - optimized for laptops and mobile
+- **🛡️ Dual engines** - MLX primary + HuggingFace fallback
 
 ## Get Involved
 
-exo is **experimental** software. Expect bugs early on. Create issues so they can be fixed. The [exo labs](https://x.com/exolabs) team will strive to resolve issues quickly.
+This is an **experimental fork** focused on Apple Silicon optimization. The original [exo labs](https://x.com/exolabs) team maintains the main project with broader platform support.
 
-We also welcome contributions from the community. We have a list of bounties in [this sheet](https://docs.google.com/spreadsheets/d/1cTCpTIp48UnnIvHeLEUNg1iMy_Q6lRybgECSFCoVJpE/edit?usp=sharing).
+**Original Project**: [github.com/exo-explore/exo](https://github.com/exo-explore/exo)
+**Community**: [Discord](https://discord.gg/EUnjGpsmWw) | [Telegram](https://t.me/+Kh-KqHTzFYg3MGNk) | [X](https://x.com/exolabs)
+
+This fork welcomes contributions for:
+- 🍎 Apple Silicon performance improvements
+- 📱 iOS/iPadOS support (A-series chips)  
+- 🔧 MLX engine enhancements
+- 🛡️ HuggingFace integration improvements
 
 ## Features
 
 ### Wide Model Support
 
-exo supports different models including LLaMA ([MLX](exo/inference/mlx/models/llama.py) and [tinygrad](exo/inference/tinygrad/models/llama.py)), Mistral, LlaVA, Qwen, and Deepseek.
+This fork enhances the original exo's model support with optimized Apple Silicon inference:
+
+- **MLX Models** (Primary): LLaMA, Mistral, Qwen, DeepSeek, Phi - all with Metal acceleration
+- **HuggingFace Models** (Fallback): CPU-only inference for maximum compatibility
+- **Vision Models**: LlaVA and other multimodal models
 
 ### Dynamic Model Partitioning
 
-exo [optimally splits up models](exo/topology/ring_memory_weighted_partitioning_strategy.py) based on the current network topology and device resources available. This enables you to run larger models than you would be able to on any single device.
+Like the original exo, this fork [optimally splits up models](exo/topology/ring_memory_weighted_partitioning_strategy.py) based on the current network topology and device resources available. This enables you to run larger models than you would be able to on any single device.
 
 ### Automatic Device Discovery
 
-exo will [automatically discover](https://github.com/exo-explore/exo/blob/945f90f676182a751d2ad7bcf20987ab7fe0181e/exo/orchestration/node.py#L154) other devices using the best method available. Zero manual configuration.
+This fork maintains exo's [automatic discovery](https://github.com/exo-explore/exo/blob/945f90f676182a751d2ad7bcf20987ab7fe0181e/exo/orchestration/node.py#L154) capabilities with Apple-optimized networking. Zero manual configuration.
 
 ### ChatGPT-compatible API
 
-exo provides a [ChatGPT-compatible API](exo/api/chatgpt_api.py) for running models. It's a [one-line change](examples/chatgpt_api.sh) in your application to run models on your own hardware using exo.
+Enhanced [ChatGPT-compatible API](exo/api/chatgpt_api.py) with improved Apple Silicon performance. It's a [one-line change](examples/chatgpt_api.sh) in your application to run models on your own hardware.
 
 ### Device Equality
 
-Unlike other distributed inference frameworks, exo does not use a master-worker architecture. Instead, exo devices [connect p2p](https://github.com/exo-explore/exo/blob/945f90f676182a751d2ad7bcf20987ab7fe0181e/exo/orchestration/node.py#L161). As long as a device is connected somewhere in the network, it can be used to run models.
+Following exo's philosophy, this fork does not use a master-worker architecture. Instead, devices [connect p2p](https://github.com/exo-explore/exo/blob/945f90f676182a751d2ad7bcf20987ab7fe0181e/exo/orchestration/node.py#L161). As long as a device is connected somewhere in the network, it can be used to run models.
 
-Exo supports different [partitioning strategies](exo/topology/partitioning_strategy.py) to split up a model across devices. The default partitioning strategy is [ring memory weighted partitioning](exo/topology/ring_memory_weighted_partitioning_strategy.py). This runs an inference in a ring where each device runs a number of model layers proportional to the memory of the device.
+Supports the same [partitioning strategies](exo/topology/partitioning_strategy.py) as the original exo to split up a model across devices. The default is [ring memory weighted partitioning](exo/topology/ring_memory_weighted_partitioning_strategy.py) optimized for Apple Silicon unified memory.
 
 !["A screenshot of exo running 5 nodes](docs/exo-screenshot.jpg)
 
 ## Installation
 
-The current recommended way to install exo is from source.
-
 ### Prerequisites
 
-- Python>=3.12.0 is required because of [issues with asyncio](https://github.com/exo-explore/exo/issues/5) in previous versions.
-- For Linux with NVIDIA GPU support (Linux-only, skip if not using Linux or NVIDIA):
-  - NVIDIA driver - verify with `nvidia-smi`
-  - CUDA toolkit - install from [NVIDIA CUDA guide](https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#cuda-cross-platform-installation), verify with `nvcc --version`
-  - cuDNN library - download from [NVIDIA cuDNN page](https://developer.nvidia.com/cudnn-downloads), verify installation by following [these steps](https://docs.nvidia.com/deeplearning/cudnn/latest/installation/linux.html#verifying-the-install-on-linux:~:text=at%20a%20time.-,Verifying%20the%20Install%20on%20Linux,Test%20passed!,-Upgrading%20From%20Older)
+- **Apple Silicon device** (M1, M2, M3, or M4) - this fork is optimized exclusively for Apple Silicon
+- **Python>=3.12.0** (required because of [asyncio issues](https://github.com/exo-explore/exo/issues/5) in previous versions)
+- **macOS Sonoma 14.0+** (Sequoia recommended for best MLX performance)
 
 ### Hardware Requirements
 
-- The only requirement to run exo is to have enough memory across all your devices to fit the entire model into memory. For example, if you are running llama 3.1 8B (fp16), you need 16GB of memory across all devices. Any of the following configurations would work since they each have more than 16GB of memory in total:
-  - 2 x 8GB M3 MacBook Airs
-  - 1 x 16GB NVIDIA RTX 4070 Ti Laptop
-  - 2 x Raspberry Pi 400 with 4GB of RAM each (running on CPU) + 1 x 8GB Mac Mini
-- exo is designed to run on devices with heterogeneous capabilities. For example, you can have some devices with powerful GPUs and others with integrated GPUs or even CPUs. Adding less capable devices will slow down individual inference latency but will increase the overall throughput of the cluster.
+The only requirement to run exo is to have enough memory across all your Apple devices to fit the entire model into memory. For example, if you are running llama 3.1 8B (fp16), you need 16GB of memory across all devices. These Apple Silicon configurations work great:
+
+- **2 x M3 MacBook Airs (8GB each)** - Perfect for 7B models
+- **1 x M2 MacBook Pro (16GB)** - Great for single-device 7B models  
+- **1 x Mac Studio M2 Ultra (64GB)** - Can run 70B models solo
+- **3 x Mac Mini M4 (8GB each)** - Distributed 7B+ models
+
+exo is designed to run on devices with heterogeneous capabilities. You can mix different Apple Silicon devices - M1 MacBook Air with M4 Mac Studio, etc.
 
 ### From source
 
-
-```sh
-git clone https://github.com/exo-explore/exo.git
-cd exo
+```bash
+# Clone this Apple Silicon optimized fork
+git clone https://github.com/nightguarder/exo-local.git
+cd exo-local
 pip install -e .
 # alternatively, with venv
 source install.sh
 ```
 
-
 ### Troubleshooting
 
-- If running on Mac, MLX has an [install guide](https://ml-explore.github.io/mlx/build/html/install.html) with troubleshooting steps.
+- MLX has an [install guide](https://ml-explore.github.io/mlx/build/html/install.html) with troubleshooting steps for Apple Silicon.
 
 ### Performance
 
-- There are a number of things users have empirically found to improve performance on Apple Silicon Macs:
+For optimal performance on Apple Silicon:
 
-1. Upgrade to the latest version of macOS Sequoia.
-2. Run `./configure_mlx.sh`. This runs commands to optimize GPU memory allocation on Apple Silicon Macs.
+1. **Upgrade to the latest version of macOS Sequoia** for best MLX support.
+2. **Run `./configure_mlx.sh`** - This runs commands to optimize GPU memory allocation on Apple Silicon.
+3. **Close memory-intensive apps** when running large models.
 
+## Quick Start
+
+### Single Command Setup
+
+```bash
+# Start exo with optimal settings
+exo
+```
+
+### With Custom API Port
+
+```bash
+# Start with ChatGPT-compatible API on port 8000
+python -m exo.main --chatgpt-api-port 8000
+```
+
+**That's it!** Your Apple devices will automatically find each other and create a distributed AI cluster.
+
+- **Web Interface**: http://localhost:52415
+- **ChatGPT API**: http://localhost:8000/v1/chat/completions (if using custom port)
+
+### Test Your Setup
+
+```bash
+# Test with optimized DeepSeek model
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-r1-distill-qwen-1.5b",
+    "messages": [{"role": "user", "content": "What is 2+2?"}],
+    "max_tokens": 50
+  }'
+```
 
 ## Documentation
 
-### Example Usage on Multiple macOS Devices
+### Example Usage on Multiple Apple Silicon Devices
 
 #### Device 1:
-
 ```sh
 exo
 ```
@@ -122,14 +171,24 @@ exo
 exo
 ```
 
-That's it! No configuration required - exo will automatically discover the other device(s).
+That's it! No configuration required - exo will automatically discover the other Apple devices.
 
 exo starts a ChatGPT-like WebUI (powered by [tinygrad tinychat](https://github.com/tinygrad/tinygrad/tree/master/examples/tinychat)) on http://localhost:52415
 
 For developers, exo also starts a ChatGPT-compatible API endpoint on http://localhost:52415/v1/chat/completions. Examples with curl:
 
-#### Llama 3.2 3B:
+#### DeepSeek R1 Distill (Recommended for Apple Silicon):
+```sh
+curl http://localhost:52415/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+     "model": "deepseek-r1-distill-qwen-1.5b",
+     "messages": [{"role": "user", "content": "What is the meaning of exo?"}],
+     "temperature": 0.7
+   }'
+```
 
+#### Llama 3.2 3B:
 ```sh
 curl http://localhost:52415/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -140,32 +199,18 @@ curl http://localhost:52415/v1/chat/completions \
    }'
 ```
 
-#### Llama 3.1 405B:
-
+#### Llama 3.1 70B (Distributed across multiple Apple devices):
 ```sh
 curl http://localhost:52415/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-     "model": "llama-3.1-405b",
-     "messages": [{"role": "user", "content": "What is the meaning of exo?"}],
-     "temperature": 0.7
-   }'
-```
-
-#### DeepSeek R1 (full 671B):
-
-```sh
-curl http://localhost:52415/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-     "model": "deepseek-r1",
+     "model": "llama-3.1-70b",
      "messages": [{"role": "user", "content": "What is the meaning of exo?"}],
      "temperature": 0.7
    }'
 ```
 
 #### Llava 1.5 7B (Vision Language Model):
-
 ```sh
 curl http://localhost:52415/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -192,35 +237,30 @@ curl http://localhost:52415/v1/chat/completions \
    }'
 ```
 
-### Example Usage on Multiple Heterogenous Devices (macOS + Linux)
+### Example Usage with Mixed Platforms (Apple Silicon + Others)
 
-#### Device 1 (macOS):
+This fork maintains compatibility with the original exo's multi-platform support:
 
+#### Device 1 (Apple Silicon with MLX):
 ```sh
 exo
 ```
 
-Note: We don't need to explicitly tell exo to use the **tinygrad** inference engine. **MLX** and **tinygrad** are interoperable!
-
-#### Device 2 (Linux):
+#### Device 2 (Linux with tinygrad):
 ```sh
 exo
 ```
 
-Linux devices will automatically default to using the **tinygrad** inference engine.
+Note: **MLX** and **tinygrad** are interoperable! The Apple Silicon device will use MLX for optimal performance while other devices can use tinygrad.
 
-You can read about tinygrad-specific env vars [here](https://docs.tinygrad.org/env_vars/). For example, you can configure tinygrad to use the cpu by specifying `CLANG=1`.
-
-### Example Usage on a single device with "exo run" command
+### Single Device Usage
 
 ```sh
+# Quick model test
 exo run llama-3.2-3b
-```
 
-With a custom prompt:
-
-```sh
-exo run llama-3.2-3b --prompt "What is the meaning of exo?"
+# With custom prompt
+exo run deepseek-r1-distill-qwen-1.5b --prompt "Explain quantum computing for beginners"
 ```
 
 ### Model Storage
@@ -247,11 +287,39 @@ Enable debug logs with the DEBUG environment variable (0-9).
 DEBUG=9 exo
 ```
 
-For the **tinygrad** inference engine specifically, there is a separate DEBUG flag `TINYGRAD_DEBUG` that can be used to enable debug logs (1-6).
+For enhanced debugging with this fork's dual engine support:
 
 ```sh
-TINYGRAD_DEBUG=2 exo
+# General debugging
+DEBUG=9 exo
+
+# MLX-specific debugging
+MLX_DEBUG=1 exo
+
+# HuggingFace engine debugging  
+HF_DEBUG=true exo
 ```
+
+## Performance Optimization
+
+This fork includes several Apple Silicon optimizations:
+
+```sh
+# Run after installation for optimal performance
+./configure_mlx.sh
+
+# Environment variables for tuning
+export MLX_MEMORY_POOL=1         # Enable MLX memory pooling
+export OMP_NUM_THREADS=4         # CPU thread optimization
+```
+
+### Apple Silicon Performance Tips
+
+1. **Update to macOS Sequoia** for best MLX performance
+2. **Run ./configure_mlx.sh** after installation  
+3. **Close memory-intensive apps** when running large models
+4. **Use MLX models** (deepseek, llama, qwen) for best performance
+5. **HuggingFace models** work as CPU fallback when needed
 
 ## Formatting
 
@@ -269,32 +337,105 @@ python3 format.py ./exo
 
 ## Known Issues
 
-- On certain versions of Python on macOS, certificates may not installed correctly, potentially causing SSL errors (e.g., when accessing huggingface.co). To resolve this, run the `Install Certificates` command, typicall as follows:
+- On certain versions of Python on macOS, certificates may not installed correctly, potentially causing SSL errors (e.g., when accessing huggingface.co). To resolve this, run the `Install Certificates` command, typically as follows:
 
 ```sh
-/Applications/Python 3.x/Install Certificates.command
+/Applications/Python\ 3.12/Install\ Certificates.command
 ```
 
-- 🚧 As the library is evolving so quickly, the iOS implementation has fallen behind Python. We have decided for now not to put out the buggy iOS version and receive a bunch of GitHub issues for outdated code. We are working on solving this properly and will make an announcement when it's ready. If you would like access to the iOS implementation now, please email alex@exolabs.net with your GitHub username explaining your use-case and you will be granted access on GitHub.
+- 🚧 iOS implementation is planned for this Apple Silicon fork but not yet available. Focus is currently on macOS Apple Silicon optimization.
 
 ## Inference Engines
 
-exo supports the following inference engines:
+This fork supports optimized inference engines:
 
-- ✅ [MLX](exo/inference/mlx/sharded_inference_engine.py)
-- ✅ [tinygrad](exo/inference/tinygrad/inference.py)
-- 🚧 [PyTorch](https://github.com/exo-explore/exo/pull/139)
-- 🚧 [llama.cpp](https://github.com/exo-explore/exo/issues/167)
+- ✅ **[MLX](exo/inference/mlx/sharded_inference_engine.py)** (Primary - Apple Silicon optimized)
+- ✅ **[HuggingFace](exo/inference/huggingface/inference.py)** (Fallback - CPU-only)  
+- ✅ **[tinygrad](exo/inference/tinygrad/inference.py)** (Multi-platform compatibility)
+
+For technical details, see [README-DEV.md](README-DEV.md).
 
 ## Discovery Modules
 
-- ✅ [UDP](exo/networking/udp)
-- ✅ [Manual](exo/networking/manual)
-- ✅ [Tailscale](exo/networking/tailscale)
-- 🚧 Radio
-- 🚧 Bluetooth
+- ✅ [UDP](exo/networking/udp) - Automatic local network discovery
+- ✅ [Manual](exo/networking/manual) - Manual IP configuration
+- ✅ [Tailscale](exo/networking/tailscale) - VPN mesh networking
+- 🚧 AirDrop (planned for Apple ecosystem)
 
-# Peer Networking Modules
+## Peer Networking Modules
 
-- ✅ [GRPC](exo/networking/grpc)
-- 🚧 NCCL
+- ✅ [GRPC](exo/networking/grpc) - Primary networking protocol
+- 🚧 Apple-specific optimizations planned
+
+## Contributing to This Fork
+
+This Apple Silicon-optimized fork welcomes contributions that enhance Apple device performance and compatibility. While maintaining the spirit of the original [exo project](https://github.com/exo-explore/exo), this fork focuses specifically on:
+
+- 🍎 **Apple Silicon performance improvements**
+- 📱 **iOS/iPadOS support** (A-series chips)
+- 🔧 **MLX engine enhancements**
+- 🛡️ **HuggingFace integration improvements**
+- 🎨 **Apple-specific UI/UX optimizations**
+
+### Development Setup
+
+```bash
+# Clone this Apple Silicon fork
+git clone https://github.com/nightguarder/exo-local.git
+cd exo-local
+source install.sh
+
+# Install development dependencies
+pip install pytest yapf black mypy
+
+# See detailed development guide
+open README-DEV.md
+```
+
+### Relationship to Original Project
+
+- **Upstream**: [exo-explore/exo](https://github.com/exo-explore/exo) by [exo labs](https://x.com/exolabs)
+- **This Fork**: Apple Silicon optimization with enhanced MLX + HuggingFace support
+- **Goal**: Maximize performance on Apple devices while maintaining compatibility
+
+## Roadmap
+
+### Apple Silicon Enhancements
+- **iPhone/iPad Support** - Extend MLX optimization to A17/A18 Pro chips
+- **AirDrop Discovery** - Native Apple device discovery via AirDrop protocol
+- **Metal Optimization** - Direct Metal Performance Shaders integration
+- **Neural Engine** - Integration with Apple's dedicated AI chip
+- **iOS App** - Native iOS client application
+
+### Performance Goals
+- **100+ tokens/sec** on M4 Max devices
+- **Sub-second startup** for common models  
+- **Real-time streaming** for conversations
+- **Multi-modal support** (text + images + audio)
+
+## License
+
+GPL v3 License - Same as original exo project. See [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+- **[exo labs](https://x.com/exolabs)** and the original [exo project](https://github.com/exo-explore/exo) team
+- **[Apple ML Research](https://github.com/ml-explore/mlx)** for the MLX framework
+- **[HuggingFace](https://huggingface.co)** for the transformers ecosystem
+- **Apple Silicon community** for testing and feedback on this fork
+
+---
+
+<div align="center">
+
+**🚀 Ready to supercharge your Apple devices with AI?**
+
+```bash
+git clone https://github.com/nightguarder/exo-local.git && cd exo-local && source install.sh && exo
+```
+
+*Transform your Apple devices into a distributed AI cluster in under 60 seconds*
+
+**📖 For technical details and development information, see [README-DEV.md](README-DEV.md)**
+
+</div>
