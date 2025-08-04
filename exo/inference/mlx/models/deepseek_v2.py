@@ -5,13 +5,14 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from mlx_lm.models.cache import KVCache
-from mlx_lm.models.deepseek_v2 import ModelArgs, DeepseekV2DecoderLayer
+from mlx_lm.models.deepseek_v2 import DeepseekV2DecoderLayer
+from mlx_lm.models.deepseek_v2 import ModelArgs as BaseDeepseekV2ModelArgs
 from .base import IdentityBlock
 from exo.inference.shard import Shard
 
 
 @dataclass
-class ModelArgs(ModelArgs):
+class ModelArgs(BaseDeepseekV2ModelArgs):
   shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0))
 
   def __post_init__(self):
@@ -45,7 +46,7 @@ class DeepseekV2Model(nn.Module):
   def __call__(
     self,
     x: mx.array,
-    cache: Optional[KVCache] = None,
+    cache=None,
   ) -> mx.array:
     if self.args.shard.is_first_layer():
       h = self.embed_tokens(x)
@@ -106,7 +107,8 @@ class Model(nn.Module):
       for n, m in [("w1", "gate_proj"), ("w2", "down_proj"), ("w3", "up_proj")]:
         for k in ["weight", "scales", "biases"]:
           if f"{prefix}.mlp.experts.0.{m}.{k}" in shard_state_dict:
-            to_join = [shard_state_dict.pop(f"{prefix}.mlp.experts.{e}.{m}.{k}") for e in range(self.args.n_routed_experts)]
+            num_experts = self.args.n_routed_experts or 64  # Default fallback
+            to_join = [shard_state_dict.pop(f"{prefix}.mlp.experts.{e}.{m}.{k}") for e in range(num_experts)]
             shard_state_dict[f"{prefix}.mlp.switch_mlp.{m}.{k}"] = mx.stack(to_join)
 
     return shard_state_dict

@@ -4,13 +4,14 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from mlx_lm.models.base import create_attention_mask
-from mlx_lm.models.phi3 import TransformerBlock, ModelArgs
+from mlx_lm.models.phi3 import TransformerBlock
+from mlx_lm.models.phi3 import ModelArgs as BasePhi3ModelArgs
 
 from ...shard import Shard
 from .base import IdentityBlock
 
 @dataclass
-class ModelArgs(ModelArgs):
+class ModelArgs(BasePhi3ModelArgs):
   shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0))
 
   def __post_init__(self):

@@ -4,14 +4,15 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from mlx_lm.models.base import create_attention_mask
-from mlx_lm.models.gemma2 import TransformerBlock, ModelArgs, RMSNorm
+from mlx_lm.models.gemma2 import TransformerBlock, RMSNorm
+from mlx_lm.models.gemma2 import ModelArgs as BaseGemma2ModelArgs
 
 from ...shard import Shard
 from .base import IdentityBlock
 
 
 @dataclass
-class ModelArgs(ModelArgs):
+class ModelArgs(BaseGemma2ModelArgs):
   shard: Shard = field(default_factory=lambda: Shard("", 0, 0, 0))
 
   def __post_init__(self):

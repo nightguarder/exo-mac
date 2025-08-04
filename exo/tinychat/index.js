@@ -242,6 +242,23 @@ document.addEventListener("alpine:init", () => {
         if (!value && !this.imagePreview) return;
 
         if (this.generating) return;
+
+        // Check offline mode validation
+        if (this.offlineMode) {
+          const offlineModels = this.getOfflineAvailableModels();
+          if (Object.keys(offlineModels).length === 0) {
+            this.setError(new Error('No models available offline. Please download a model first or check your internet connection.'));
+            return;
+          }
+          
+          // Check if selected model is available offline
+          if (!offlineModels[this.cstate.selectedModel]) {
+            const availableModel = Object.keys(offlineModels)[0];
+            this.cstate.selectedModel = availableModel;
+            console.log(`Switched to available offline model: ${availableModel}`);
+          }
+        }
+
         this.generating = true;
         if (this.home === 0) this.home = 1;
 
@@ -269,6 +286,18 @@ document.addEventListener("alpine:init", () => {
 
     async processMessage(value) {
       try {
+        // Additional offline mode validation
+        if (this.offlineMode) {
+          const offlineModels = this.getOfflineAvailableModels();
+          if (Object.keys(offlineModels).length === 0) {
+            throw new Error('No models available for offline processing');
+          }
+          
+          if (!offlineModels[this.cstate.selectedModel]) {
+            throw new Error(`Selected model '${this.cstate.selectedModel}' is not available offline`);
+          }
+        }
+
         // reset performance tracking
         const prefill_start = Date.now();
         let start_time = 0;
