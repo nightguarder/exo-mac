@@ -167,7 +167,7 @@ model_cards = {
   "mistral-7b-instruct": {
     "layers": 32,
     "repo": {
-       "MLXDynamicShardInferenceEngine": "mlx-community/Mistral-7B-Instruct-v0.1-4bit",
+       "MLXDynamicShardInferenceEngine": "mlx-community/Mistral-7B-Instruct-v0.3-4bit",
        "TinygradDynamicShardInferenceEngine": "mistralai/Mistral-7B-Instruct-v0.1",
        "HuggingFaceInferenceEngine": "mistralai/Mistral-7B-Instruct-v0.1",
     },

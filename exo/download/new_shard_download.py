@@ -86,11 +86,42 @@ async def seed_models(seed_dir: Union[str, Path]):
 async def fetch_file_list_with_cache(repo_id: str, revision: str = "main") -> List[Dict[str, Union[str, int]]]:
   cache_file = (await ensure_exo_tmp())/f"{repo_id.replace('/', '--')}--{revision}--file_list.json"
   if await aios.path.exists(cache_file):
-    async with aiofiles.open(cache_file, 'r') as f: return json.loads(await f.read())
-  file_list = await fetch_file_list_with_retry(repo_id, revision)
-  await aios.makedirs(cache_file.parent, exist_ok=True)
-  async with aiofiles.open(cache_file, 'w') as f: await f.write(json.dumps(file_list))
-  return file_list
+    try:
+      async with aiofiles.open(cache_file, 'r') as f: 
+        return json.loads(await f.read())
+    except (json.JSONDecodeError, Exception) as e:
+      print(f"Cache file corrupted for {repo_id}, removing and re-fetching: {e}")
+      try:
+        await aios.remove(cache_file)
+      except:
+        pass
+  
+  try:
+    file_list = await fetch_file_list_with_retry(repo_id, revision)
+    await aios.makedirs(cache_file.parent, exist_ok=True)
+    async with aiofiles.open(cache_file, 'w') as f: 
+      await f.write(json.dumps(file_list))
+    return file_list
+  except Exception as e:
+    # If we get a 404 or other error, suggest clearing cache
+    if "404" in str(e) or "not found" in str(e).lower():
+      print(f"\nTroubleshooting suggestions for model '{repo_id}':")
+      print("1. Verify the model name is correct")
+      print("2. Check if the model exists at: https://huggingface.co/" + repo_id)
+      print("3. If the model is private, ensure you have proper authentication")
+      print("4. Try clearing the cache with: rm -rf ~/.cache/exo/")
+    raise
+
+async def check_model_exists(repo_id: str, revision: str = "main") -> bool:
+  """Check if a model repository exists on Hugging Face"""
+  try:
+    api_url = f"{get_hf_endpoint()}/api/models/{repo_id}"
+    headers = await get_auth_headers()
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10, connect=5)) as session:
+      async with session.head(api_url, headers=headers) as response:
+        return response.status == 200
+  except Exception:
+    return False
 
 async def fetch_file_list_with_retry(repo_id: str, revision: str = "main", path: str = "") -> List[Dict[str, Union[str, int]]]:
   n_attempts = 30
@@ -118,7 +149,17 @@ async def _fetch_file_list(repo_id: str, revision: str = "main", path: str = "")
             subfiles = await _fetch_file_list(repo_id, revision, item["path"])
             files.extend(subfiles)
         return files
+      elif response.status == 404:
+        error_text = await response.text()
+        print(f"Model repository not found or access denied: {repo_id}")
+        print(f"URL: {url}")
+        print(f"Response: {error_text}")
+        raise Exception(f"Model repository '{repo_id}' not found (404). Please check the model name and ensure it exists on Hugging Face.")
       else:
+        error_text = await response.text()
+        print(f"Failed to fetch file list for {repo_id}: HTTP {response.status}")
+        print(f"URL: {url}")
+        print(f"Response: {error_text}")
         raise Exception(f"Failed to fetch file list: {response.status}")
 
 async def calc_hash(path: Path, type: Literal["sha1", "sha256"] = "sha1") -> str:
@@ -151,15 +192,40 @@ async def download_file_with_retry(repo_id: str, revision: str, path: str, targe
       if isinstance(e, FileNotFoundError) or attempt == n_attempts - 1: raise e
       print(f"Download error on attempt {attempt}/{n_attempts} for {repo_id=} {revision=} {path=} {target_dir=}")
       traceback.print_exc()
+      
+      # Clean up any partial files before retrying
+      partial_path = target_dir/f"{path}.partial"
+      if await aios.path.exists(partial_path):
+        try:
+          await aios.remove(partial_path)
+          print(f"Cleaned up partial file {partial_path} before retry")
+        except Exception as cleanup_e:
+          print(f"Error cleaning up partial file {partial_path}: {cleanup_e}")
+      
       await asyncio.sleep(min(8, 0.1 * (2 ** attempt)))
   # This should never be reached due to the raise above, but satisfies type checker
   raise RuntimeError("All download attempts failed")
 
 async def _download_file(repo_id: str, revision: str, path: str, target_dir: Path, on_progress: Callable[[int, int], None] = lambda _, __: None) -> Path:
-  if await aios.path.exists(target_dir/path): return target_dir/path
   await aios.makedirs((target_dir/path).parent, exist_ok=True)
   length, etag = await file_meta(repo_id, revision, path)
   remote_hash = etag[:-5] if etag.endswith("-gzip") else etag
+  
+  # Check if file already exists and validate its hash
+  if await aios.path.exists(target_dir/path):
+    try:
+      existing_hash = await calc_hash(target_dir/path, type="sha256" if len(remote_hash) == 64 else "sha1")
+      if existing_hash == remote_hash:
+        return target_dir/path
+      else:
+        print(f"Existing file {target_dir/path} has hash {existing_hash} but remote hash is {remote_hash}. Re-downloading...")
+        await aios.remove(target_dir/path)
+    except Exception as e:
+      print(f"Error validating existing file {target_dir/path}: {e}. Re-downloading...")
+      try:
+        await aios.remove(target_dir/path)
+      except:
+        pass
   partial_path = target_dir/f"{path}.partial"
   resume_byte_pos = (await aios.stat(partial_path)).st_size if (await aios.path.exists(partial_path)) else None
   if resume_byte_pos != length:
@@ -177,12 +243,27 @@ async def _download_file(repo_id: str, revision: str, path: str, target_dir: Pat
   final_hash = await calc_hash(partial_path, type="sha256" if len(remote_hash) == 64 else "sha1")
   integrity = final_hash == remote_hash
   if not integrity:
-    try: await aios.remove(partial_path)
-    except Exception as e: print(f"Error removing partial file {partial_path}: {e}")
+    print(f"Hash mismatch for {target_dir/path}: downloaded={final_hash}, expected={remote_hash}")
+    try: 
+      await aios.remove(partial_path)
+      print(f"Removed corrupted partial file {partial_path}")
+    except Exception as e: 
+      print(f"Error removing partial file {partial_path}: {e}")
     raise Exception(f"Downloaded file {target_dir/path} has hash {final_hash} but remote hash is {remote_hash}")
   await aios.rename(partial_path, target_dir/path)
   return target_dir/path
 
+
+async def clear_corrupted_downloads(repo_id: str):
+  """Clear all downloaded files for a repo to force re-download"""
+  target_dir = (await ensure_exo_tmp())/repo_id.replace("/", "--")
+  if await aios.path.exists(target_dir):
+    try:
+      import shutil
+      await asyncio.get_event_loop().run_in_executor(None, shutil.rmtree, target_dir)
+      print(f"Cleared corrupted downloads for {repo_id} from {target_dir}")
+    except Exception as e:
+      print(f"Error clearing downloads for {repo_id}: {e}")
 
 def calculate_repo_progress(shard: Shard, repo_id: str, revision: str, file_progress: Dict[str, RepoFileProgressEvent], all_start_time: float) -> RepoProgressEvent:
   all_total_bytes = sum([p.total for p in file_progress.values()])

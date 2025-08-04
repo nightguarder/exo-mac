@@ -46,22 +46,22 @@ source .venv/bin/activate
 
 # Upgrade pip
 echo "⬆️  Upgrading pip..."
-pip install --upgrade pip
+pip3 install --upgrade pip
 
 # Install requirements
 echo "📥 Installing requirements from requirements.txt..."
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 
 # Check if we're on Apple Silicon Mac for MLX support
 if [[ "$OSTYPE" == "darwin"* ]] && [[ "$(uname -m)" == "arm64" ]]; then
     echo "🍎 Detected Apple Silicon Mac - MLX support will be installed"
     echo "📥 Installing MLX packages..."
-    pip install mlx==0.26.1 mlx-lm==0.21.1
+    pip3 install mlx==0.26.1 mlx-lm==0.21.1
 fi
 
 # Install exo in development mode
 echo "📥 Installing exo and dependencies..."
-pip install -e .
+pip3 install -e .
 
 echo "✅ Installation complete!"
 echo ""
@@ -73,4 +73,7 @@ echo "   exo"
 echo ""
 echo "🔧 For local mode with MLX (Apple Silicon):"
 echo "   python exo/main.py --local-mode --inference-engine mlx"
+echo ""
+echo "  For better MLX performance, run the following command:"
+echo "   ./configure_mlx.sh" from the root directory
 echo ""

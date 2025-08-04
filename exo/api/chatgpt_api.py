@@ -8,6 +8,7 @@ from transformers import AutoTokenizer
 from typing import List, Literal, Union, Dict, Optional
 from aiohttp import web
 import aiohttp_cors
+from aiohttp.client_exceptions import ClientConnectionResetError
 import traceback
 import signal
 from exo import DEBUG, VERSION
@@ -338,8 +339,15 @@ class ChatGPTAPI:
       await response.prepare(request)
       async for path, s in self.node.shard_downloader.get_shard_download_status(self.inference_engine_classname):
         model_data = { s.shard.model_id: { "downloaded": s.downloaded_bytes == s.total_bytes, "download_percentage": 100 if s.downloaded_bytes == s.total_bytes else 100 * float(s.downloaded_bytes) / float(s.total_bytes), "total_size": s.total_bytes, "total_downloaded": s.downloaded_bytes } }
-        await response.write(f"data: {json.dumps(model_data)}\n\n".encode())
-      await response.write(b"data: [DONE]\n\n")
+        try:
+          await response.write(f"data: {json.dumps(model_data)}\n\n".encode())
+        except (ClientConnectionResetError, ConnectionResetError, ConnectionAbortedError, OSError) as e:
+          if DEBUG >= 2: print(f"Client disconnected during model support stream: {e}")
+          return response
+      try:
+        await response.write(b"data: [DONE]\n\n")
+      except (ClientConnectionResetError, ConnectionResetError, ConnectionAbortedError, OSError) as e:
+        if DEBUG >= 2: print(f"Client disconnected before completing model support stream: {e}")
       return response
 
     except Exception as e:

@@ -10,6 +10,7 @@ from . import node_service_pb2_grpc
 from exo import DEBUG
 from exo.inference.shard import Shard
 from exo.orchestration import Node
+from exo.networking.server import Server
 import json
 
 if platform.system().lower() == "darwin" and platform.machine().lower() == "arm64":
@@ -18,7 +19,7 @@ else:
   import numpy as mx
 
 
-class GRPCServer(node_service_pb2_grpc.NodeServiceServicer):
+class GRPCServer(Server, node_service_pb2_grpc.NodeServiceServicer):
   def __init__(self, node: Node, host: str, port: int):
     self.node = node
     self.host = host

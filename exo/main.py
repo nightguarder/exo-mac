@@ -279,22 +279,26 @@ async def main():
     for s in [signal.SIGINT, signal.SIGTERM]:
       loop.add_signal_handler(s, handle_exit)
 
-    # Setup node
-  server = GRPCServer(node_id, host=args.node_host, port=node_port)
+    # Setup node - create a placeholder server first, then create node, then update server
   partitioning_strategy = RingMemoryWeightedPartitioningStrategy()
   topology_viz = None
   if not args.disable_tui:
       topology_viz = TopologyViz()
 
+  # Create node with a temporary placeholder for server
   node = Node(
       _id=node_id,
-      server=server,
+      server=None,  # Temporarily None, will be set immediately after
       inference_engine=inference_engine,
       partitioning_strategy=partitioning_strategy,
       discovery=discovery,
       shard_downloader=shard_downloader,
       topology_viz=topology_viz
   )
+  
+  # Create server with the node and set the reference in the node
+  server = GRPCServer(node, host=args.node_host, port=node_port)
+  node.server = server
 
   await node.start(wait_for_peers=args.wait_for_peers)
 
