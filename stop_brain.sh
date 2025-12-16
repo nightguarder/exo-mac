@@ -16,8 +16,9 @@ if [ -f exo_pid.txt ]; then
 fi
 
 # Kill all processes matching the pattern
-echo "Killing all processes matching 'python -m exo.main'..."
+echo "Killing all processes matching 'exo'..."
 pkill -9 -f "python -m exo.main"
+pkill -9 -f "bin/exo"
 
 # Kill any process listening on port 52415
 if lsof -t -i:52415 >/dev/null 2>&1; then

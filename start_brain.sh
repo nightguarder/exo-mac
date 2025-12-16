@@ -32,4 +32,4 @@ MODEL=${1:-$DEFAULT_MODEL}
 # 3. Start new instance (Foreground)
 echo "Starting Exo Brain with model: $MODEL"
 # We use exec to replace the shell process with exo, so signals are passed correctly
-exec .venv/bin/python -u -m exo.main --default-model "$MODEL" --inference-engine mlx --chatgpt-api-port 52415
+exec .venv/bin/exo --default-model "$MODEL" --inference-engine mlx --chatgpt-api-port 52415
