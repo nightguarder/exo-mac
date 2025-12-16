@@ -21,6 +21,8 @@ install_requires = [
     
     # Web interface
     "Jinja2==3.1.4",
+    "pillow==10.4.0",
+    "opencv-python==4.10.0.84",
     
     # Core ML dependencies  
     "numpy==2.0.0",
@@ -41,7 +43,7 @@ install_requires = [
     "psutil==6.0.0",
     "uuid==1.30",
     "uvloop==0.21.0",
-    "scapy>=2.7.0",
+    "scapy==2.6.1",
     
     # Development and monitoring
     "prometheus-client==0.20.0",
