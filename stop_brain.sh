@@ -19,6 +19,12 @@ fi
 echo "Killing all processes matching 'python -m exo.main'..."
 pkill -9 -f "python -m exo.main"
 
+# Kill any process listening on port 52415
+if lsof -t -i:52415 >/dev/null 2>&1; then
+    echo "Killing remaining process on port 52415..."
+    lsof -t -i:52415 | xargs kill -9
+fi
+
 # Clear logs
 echo "Clearing exo logs..."
 rm -f exo.log exo_server.log exo_debug.log
