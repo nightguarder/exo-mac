@@ -7,6 +7,10 @@ import random
 import platform
 import psutil
 import uuid
+import logging
+# Silence annoying Scapy warnings (e.g. "No IPv4 address found on anpi1")
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+
 from scapy.all import get_if_addr, get_if_list
 import re
 import subprocess
