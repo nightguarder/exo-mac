@@ -55,13 +55,6 @@ def configure_uvloop():
     loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) * 4)))
     return loop
 
-def get_detected_model(model_name, default_model):
-  #prioritize args.model_name
-  detected_model = model_name or default_model
-  if detected_model:
-    return get_pretty_name(detected_model) or "Unknown"
-  else:
-    return "Not found." #check models.py for entry
 
 # parse args
 parser = argparse.ArgumentParser(description="Initialize GRPC Discovery")
@@ -106,7 +99,6 @@ print_yellow_exo()
 
 system_info = get_system_info()
 print(f"Detected system: {system_info}")
-print(f"Detected model: {get_detected_model(args.model_name, args.default_model)}")
 
 shard_downloader: ShardDownloader = new_shard_downloader(args.max_parallel_downloads) if args.inference_engine != "dummy" else NoopShardDownloader()
 inference_engine_name = args.inference_engine or ("mlx" if system_info == "Apple Silicon Mac" else "tinygrad")
