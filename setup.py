@@ -41,6 +41,7 @@ install_requires = [
     "psutil==6.0.0",
     "uuid==1.30",
     "uvloop==0.21.0",
+    "scapy>=2.7.0",
     
     # Development and monitoring
     "prometheus-client==0.20.0",
