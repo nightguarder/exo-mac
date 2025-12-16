@@ -26,7 +26,7 @@ from exo.helpers import print_yellow_exo, find_available_port, DEBUG, get_system
 from exo.inference.shard import Shard
 from exo.inference.inference_engine import get_inference_engine
 from exo.inference.tokenizers import resolve_tokenizer
-from exo.models import build_base_shard, get_repo
+from exo.models import build_base_shard, get_repo, get_pretty_name
 from exo.viz.topology_viz import TopologyViz
 import uvloop
 import concurrent.futures
@@ -54,6 +54,14 @@ def configure_uvloop():
 
     loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) * 4)))
     return loop
+
+def get_detected_model(model_name, default_model):
+  #prioritize args.model_name
+  detected_model = model_name or default_model
+  if detected_model:
+    return get_pretty_name(detected_model) or "Unknown"
+  else:
+    return "Not found." #check models.py for entry
 
 # parse args
 parser = argparse.ArgumentParser(description="Initialize GRPC Discovery")
@@ -96,18 +104,9 @@ print(f"Selected inference engine: {args.inference_engine}")
 
 print_yellow_exo()
 
-print("\n" + "="*80)
-print("EXO")
-print("="*80)
-print("\nEXO started out of a desire to run research experiments on large language")
-print("models using the hardware we already owned.")
-print("\nWhat began here is becoming part of something much larger.")
-print("\nsoon™")
-print("\n- The EXO Team")
-print("="*80 + "\n")
-
 system_info = get_system_info()
 print(f"Detected system: {system_info}")
+print(f"Detected model: {get_detected_model(args.model_name, args.default_model)}")
 
 shard_downloader: ShardDownloader = new_shard_downloader(args.max_parallel_downloads) if args.inference_engine != "dummy" else NoopShardDownloader()
 inference_engine_name = args.inference_engine or ("mlx" if system_info == "Apple Silicon Mac" else "tinygrad")

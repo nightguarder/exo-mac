@@ -624,10 +624,10 @@ class ChatGPTAPI:
     await self.token_queues[request_id].put((tokens, is_finished))
 
   async def run(self, host: str = "0.0.0.0", port: int = 52415):
-    runner = web.AppRunner(self.app)
-    await runner.setup()
-    site = web.TCPSite(runner, host, port)
-    await site.start()
+    self.runner = web.AppRunner(self.app)
+    await self.runner.setup()
+    self.site = web.TCPSite(self.runner, host, port)
+    await self.site.start()
 
   def base64_decode(self, base64_string):
     #decode and reshape image

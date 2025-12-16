@@ -139,6 +139,7 @@ model_cards = {
   "qwen-2.5-coder-32b": { "layers": 64, "repo": { "MLXDynamicShardInferenceEngine": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit", }, },
   "qwen-2.5-72b": { "layers": 80, "repo": { "MLXDynamicShardInferenceEngine": "mlx-community/Qwen2.5-72B-Instruct-4bit", }, },
   "qwen-2.5-math-72b": { "layers": 80, "repo": { "MLXDynamicShardInferenceEngine": "mlx-community/Qwen2.5-Math-72B-Instruct-4bit", }, },
+  "qwen-2.5-32b-instruct": { "layers": 64, "repo": { "MLXDynamicShardInferenceEngine": "mlx-community/Qwen2.5-32B-Instruct-4bit", }, },
   ### nemotron
   "nemotron-70b": { "layers": 80, "repo": { "MLXDynamicShardInferenceEngine": "mlx-community/nvidia_Llama-3.1-Nemotron-70B-Instruct-HF_4bit", }, },
   "nemotron-70b-bf16": { "layers": 80, "repo": { "MLXDynamicShardInferenceEngine": "mlx-community/Llama-3.1-Nemotron-70B-Instruct-HF-bf16", }, },
@@ -193,6 +194,7 @@ pretty_name = {
   "qwen-2.5-coder-32b": "Qwen 2.5 Coder 32B",
   "qwen-2.5-72b": "Qwen 2.5 72B",
   "qwen-2.5-math-72b": "Qwen 2.5 72B (Math)",
+  "qwen-2.5-32b-instruct": "Qwen 2.5 32B Instruct",
   "phi-3.5-mini": "Phi-3.5 Mini",
   "phi-4": "Phi-4",
   "llama-3-8b": "Llama 3 8B",
@@ -236,7 +238,13 @@ def get_repo(model_id: str, inference_engine_classname: str) -> Optional[str]:
   return model_cards.get(model_id, {}).get("repo", {}).get(inference_engine_classname, None)
 
 def get_pretty_name(model_id: str) -> Optional[str]:
-  return pretty_name.get(model_id, None)
+  if model_id in pretty_name:
+    return pretty_name[model_id]
+  
+  # Auto-generate pretty name fallback
+  # e.g. qwen-2.5-32b-instruct -> Qwen 2.5 32b Instruct
+  pretty_val = model_id.replace("-", " ").replace("_", " ")
+  return " ".join([word.capitalize() for word in pretty_val.split()])
 
 def build_base_shard(model_id: str, inference_engine_classname: str) -> Optional[Shard]:
   repo = get_repo(model_id, inference_engine_classname)
@@ -244,7 +252,6 @@ def build_base_shard(model_id: str, inference_engine_classname: str) -> Optional
   if repo is None or n_layers < 1:
     return None
   return Shard(model_id, 0, 0, n_layers)
-
 def build_full_shard(model_id: str, inference_engine_classname: str) -> Optional[Shard]:
   base_shard = build_base_shard(model_id, inference_engine_classname)
   if base_shard is None: return None
