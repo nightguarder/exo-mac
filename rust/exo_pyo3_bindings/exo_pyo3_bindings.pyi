@@ -131,6 +131,7 @@ class Multiaddr:
 @typing.final
 class NetworkingHandle:
     def __new__(cls, identity: Keypair) -> NetworkingHandle: ...
+    async def shutdown(self) -> None: ...
     async def connection_update_recv(self) -> ConnectionUpdate:
         r"""
         Receives the next `ConnectionUpdate` from networking.

@@ -57,6 +57,7 @@ def prefill(
     sampler: Callable[[mx.array], mx.array],
     prompt_tokens: mx.array,
     cache: KVCacheType,
+    check_cancel: Callable[[], bool] | None = None,
 ) -> tuple[float, int, list[CacheSnapshot]]:
     """Prefill the KV cache with prompt tokens.
 
@@ -76,6 +77,12 @@ def prefill(
     snapshots: list[CacheSnapshot] = []
 
     def progress_callback(processed: int, total: int) -> None:
+        if check_cancel and check_cancel():
+            # We don't have a direct way to stop mlx_lm prefill via callback,
+            # but we can log and the next check in the loop will catch it.
+            logger.info("Cancellation detected during prefill progress")
+            return
+
         elapsed = time.perf_counter() - start_time
         tok_per_sec = processed / elapsed if elapsed > 0 else 0
         logger.debug(
@@ -101,6 +108,9 @@ def prefill(
         prompt_progress_callback=progress_callback,
     ):
         break  # Stop after first iteration - cache is now filled
+
+    if check_cancel and check_cancel():
+        return 0.0, -1, []
 
     set_pipeline_prefill(model, is_prefill=False)
 
@@ -253,6 +263,7 @@ def mlx_generate(
     prompt: str,
     kv_prefix_cache: KVPrefixCache | None = None,
     group: mx.distributed.Group | None = None,
+    check_cancel: Callable[[], bool] | None = None,
 ) -> Generator[GenerationResponse]:
     # Ensure that generation stats only contains peak memory for this generation
     mx.reset_peak_memory()
@@ -315,7 +326,11 @@ def mlx_generate(
         sampler,
         prompt_tokens[:-1],
         caches,
+        check_cancel=check_cancel,
     )
+    if prefill_tokens == -1:
+        return
+
     cache_snapshots: list[CacheSnapshot] | None = ssm_snapshots_list or None
 
     # stream_generate starts from the last token

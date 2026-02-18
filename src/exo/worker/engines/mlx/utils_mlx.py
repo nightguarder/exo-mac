@@ -416,6 +416,13 @@ def apply_chat_template(
     uses those directly to preserve tool_calls, thinking, and other fields.
     Otherwise builds messages from the task params input/instructions.
     """
+    if task_params.is_raw_prompt:
+        if task_params.input:
+            prompt = task_params.input[0].content
+            logger.info(f"Using raw prompt: {prompt[:100]}...")
+            return prompt
+        return ""
+
     formatted_messages: list[dict[str, Any]] = []
     if task_params.chat_template_messages is not None:
         # Use pre-formatted messages that preserve tool_calls, thinking, etc.
@@ -549,7 +556,7 @@ def set_wired_limit_for_model(model_size: Memory):
         return
 
     model_bytes = model_size.in_bytes
-    max_rec_size = int(mx.metal.device_info()["max_recommended_working_set_size"])
+    max_rec_size = int(mx.device_info()["max_recommended_working_set_size"])
     if model_bytes > 0.9 * max_rec_size:
         model_mb = model_bytes // 2**20
         max_rec_mb = max_rec_size // 2**20

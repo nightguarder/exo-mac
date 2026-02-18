@@ -32,6 +32,11 @@ from exo.master.adapters.claude import (
     collect_claude_response,
     generate_claude_stream,
 )
+from exo.master.adapters.completions import (
+    collect_completion_response,
+    completion_request_to_text_generation,
+    generate_completion_stream,
+)
 from exo.master.adapters.responses import (
     collect_responses_response,
     generate_responses_stream,
@@ -69,6 +74,8 @@ from exo.shared.types.api import (
     ChatCompletionMessage,
     ChatCompletionRequest,
     ChatCompletionResponse,
+    CompletionRequest,
+    CompletionResponse,
     CreateInstanceParams,
     CreateInstanceResponse,
     DeleteDownloadResponse,
@@ -113,6 +120,7 @@ from exo.shared.types.claude_api import (
     ClaudeMessagesResponse,
 )
 from exo.shared.types.commands import (
+    CancelGeneration,
     Command,
     CreateInstance,
     DeleteDownload,
@@ -143,6 +151,7 @@ from exo.shared.types.openai_responses import (
     ResponsesResponse,
 )
 from exo.shared.types.state import State
+from exo.shared.types.text_generation import TextGenerationTaskParams
 from exo.shared.types.worker.instances import Instance, InstanceId, InstanceMeta
 from exo.shared.types.worker.shards import Sharding
 from exo.utils.banner import print_startup_banner
@@ -201,8 +210,14 @@ class API:
             request: Request,
             call_next: Callable[[Request], Awaitable[StreamingResponse]],
         ) -> StreamingResponse:
-            logger.debug(f"API request: {request.method} {request.url.path}")
-            return await call_next(request)
+            start_time = time.perf_counter()
+            logger.debug(f"API request started: {request.method} {request.url.path}")
+            try:
+                response = await call_next(request)
+                return response
+            finally:
+                duration = time.perf_counter() - start_time
+                logger.debug(f"API request finished: {request.method} {request.url.path} took {duration:.2f}s")
 
         self._setup_exception_handlers()
         self._setup_cors()
@@ -284,7 +299,9 @@ class API:
         self.app.post("/v1/chat/completions", response_model=None)(
             self.chat_completions
         )
+        self.app.post("/v1/completions", response_model=None)(self.completions)
         self.app.post("/bench/chat/completions")(self.bench_chat_completions)
+
         self.app.post("/v1/images/generations", response_model=None)(
             self.image_generations
         )
@@ -622,6 +639,7 @@ class API:
     ) -> ChatCompletionResponse | StreamingResponse:
         """OpenAI Chat Completions API - adapter."""
         task_params = chat_request_to_text_generation(payload)
+        task_params = self._apply_safety_caps(task_params)
         resolved_model = await self._resolve_and_validate_text_model(
             ModelId(task_params.model)
         )
@@ -651,6 +669,39 @@ class API:
                 ),
                 media_type="application/json",
             )
+
+    async def completions(
+        self, payload: CompletionRequest
+    ) -> CompletionResponse | StreamingResponse:
+        """OpenAI Completions API - adapter."""
+        task_params = completion_request_to_text_generation(payload)
+        task_params = self._apply_safety_caps(task_params)
+        resolved_model = await self._resolve_and_validate_text_model(
+            ModelId(task_params.model)
+        )
+        task_params = task_params.model_copy(update={"model": resolved_model})
+
+        command = TextGeneration(task_params=task_params)
+        await self._send(command)
+
+        if payload.stream:
+            return StreamingResponse(
+                generate_completion_stream(
+                    command.command_id,
+                    self._token_chunk_stream(command.command_id),
+                ),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "close",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        return await collect_completion_response(
+            command.command_id,
+            self._token_chunk_stream(command.command_id),
+        )
 
     async def bench_chat_completions(
         self, payload: BenchChatCompletionRequest
@@ -700,6 +751,30 @@ class API:
                 status_code=404, detail=f"No instance found for model {resolved_model}"
             )
         return resolved_model
+
+    def _apply_safety_caps(self, params: TextGenerationTaskParams) -> TextGenerationTaskParams:
+        """Apply safety caps to generation parameters to prevent resource exhaustion."""
+        max_tokens = params.max_output_tokens
+
+        # Hard cap for all generations
+        global_hard_cap = 4096
+        if max_tokens is None or max_tokens > global_hard_cap:
+            max_tokens = global_hard_cap
+
+        # Auto-detect autocomplete if not already capped
+        prompt_content = "".join(m.content for m in params.input)
+        is_autocomplete = (
+            params.is_raw_prompt or 
+            "<|fim_prefix|>" in prompt_content or 
+            (params.stop and any(s in params.stop for s in ["<|fim_middle|>", "```", "\n\n"]))
+        )
+
+        if is_autocomplete and max_tokens > 128:
+            logger.info(f"Applying safety cap for autocomplete task: {max_tokens} -> 128")
+            max_tokens = 128
+
+        logger.debug(f"Final safety capped max_tokens: {max_tokens}")
+        return params.model_copy(update={"max_output_tokens": max_tokens})
 
     def stream_events(self) -> StreamingResponse:
         def _generate_json_array(events: Iterator[Event]) -> Iterator[str]:

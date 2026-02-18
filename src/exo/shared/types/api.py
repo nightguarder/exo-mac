@@ -17,6 +17,13 @@ FinishReason = Literal[
 ]
 
 
+class CompletionUsage(BaseModel):
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+
 class ErrorInfo(BaseModel):
     message: str
     type: str
@@ -206,6 +213,51 @@ class ChatCompletionRequest(BaseModel):
 
 class BenchChatCompletionRequest(ChatCompletionRequest):
     pass
+
+
+class CompletionRequest(BaseModel):
+    model: ModelId
+    prompt: str | list[str]
+    max_tokens: int | None = 16
+    temperature: float | None = 1.0
+    top_p: float | None = 1.0
+    n: int | None = 1
+    stream: bool = False
+    logprobs: int | None = None
+    stop: str | list[str] | None = None
+    frequency_penalty: float | None = 0.0
+    presence_penalty: float | None = 0.0
+    logit_bias: dict[str, int] | None = None
+    user: str | None = None
+    seed: int | None = None
+    echo: bool = False
+    suffix: str | None = None
+    best_of: int | None = 1
+
+
+class CompletionChoice(BaseModel):
+    text: str
+    index: int
+    logprobs: Logprobs | None = None
+    finish_reason: FinishReason | None = None
+
+
+class CompletionResponse(BaseModel):
+    id: str
+    object: Literal["text_completion"] = "text_completion"
+    created: int
+    model: str
+    choices: list[CompletionChoice]
+    usage: CompletionUsage | None = None
+
+
+class CompletionStreamResponse(BaseModel):
+    id: str
+    object: Literal["text_completion"] = "text_completion"
+    created: int
+    model: str
+    choices: list[CompletionChoice]
+
 
 
 class AddCustomModelParams(BaseModel):

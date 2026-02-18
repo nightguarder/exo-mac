@@ -135,6 +135,16 @@ class MpSender[T]:
         self._state.buffer.put(_MpEndOfStream())
         self._state.buffer.close()
 
+    def send_with_timeout(self, item: T, timeout: float) -> None:
+        if self._state.closed.is_set():
+            raise ClosedResourceError
+        try:
+            self._state.buffer.put(item, block=True, timeout=timeout)
+        except Full:
+            raise WouldBlock from None
+        except ValueError as e:
+            raise ClosedResourceError from e
+
     # == unique to Mp channels ==
     def join(self) -> None:
         """Ensure any queued messages are resolved before continuing"""

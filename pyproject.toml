@@ -39,6 +39,7 @@ exo = "exo.main:main"
 [dependency-groups]
 dev = [
     "basedpyright>=1.29.0",
+    "maturin>=1.12.1",
     "pyinstaller>=6.17.0",
     "pytest>=8.4.0",
     "pytest-asyncio>=1.0.0",

@@ -86,6 +86,10 @@ class Shutdown(BaseTask):  # emitted by Worker
     runner_id: RunnerId
 
 
+class CancelTask(BaseTask):  # emitted by Worker (in response to TaskStatusUpdated)
+    command_id: CommandId | None = Field(default=None)
+
+
 Task = (
     CreateRunner
     | DownloadModel
@@ -97,4 +101,5 @@ Task = (
     | ImageGeneration
     | ImageEdits
     | Shutdown
+    | CancelTask
 )

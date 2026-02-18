@@ -22,6 +22,7 @@ use pyo3::{Bound, Py, PyErr, PyResult, PyTraverseError, PyVisit, Python, pymetho
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyclass_enum, gen_stub_pymethods};
 use std::net::IpAddr;
 use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::task::JoinHandle;
 
 mod exception {
     use pyo3::types::PyTuple;
@@ -299,6 +300,7 @@ struct PyNetworkingHandle {
     to_task_tx: Option<mpsc::Sender<ToTask>>,
     connection_update_rx: Mutex<mpsc::Receiver<PyConnectionUpdate>>,
     gossipsub_message_rx: Mutex<mpsc::Receiver<(String, Vec<u8>)>>,
+    join_handle: Option<JoinHandle<()>>,
 }
 
 impl Drop for PyNetworkingHandle {
@@ -316,11 +318,13 @@ impl PyNetworkingHandle {
         to_task_tx: mpsc::Sender<ToTask>,
         connection_update_rx: mpsc::Receiver<PyConnectionUpdate>,
         gossipsub_message_rx: mpsc::Receiver<(String, Vec<u8>)>,
+        join_handle: JoinHandle<()>,
     ) -> Self {
         Self {
             to_task_tx: Some(to_task_tx),
             connection_update_rx: Mutex::new(connection_update_rx),
             gossipsub_message_rx: Mutex::new(gossipsub_message_rx),
+            join_handle: Some(join_handle),
         }
     }
 
@@ -358,7 +362,7 @@ impl PyNetworkingHandle {
             .pyerr()?;
 
         // spawn tokio task running the networking logic
-        get_runtime().spawn(async move {
+        let join_handle = get_runtime().spawn(async move {
             networking_task(
                 swarm,
                 to_task_rx,
@@ -371,6 +375,7 @@ impl PyNetworkingHandle {
             to_task_tx,
             connection_update_rx,
             gossipsub_message_rx,
+            join_handle,
         ))
     }
 
@@ -385,6 +390,16 @@ impl PyNetworkingHandle {
         //       to ensure that the networking task is done BEFORE exiting the clear function...
         //       but this may require GIL?? and it may not be safe to call GIL here??
         self.to_task_tx = None; // Using Option<T> as a trick to force channel to be dropped
+    }
+
+    async fn shutdown(&mut self) -> PyResult<()> {
+        self.to_task_tx = None;
+        if let Some(handle) = self.join_handle.take() {
+            handle
+                .await
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        }
+        Ok(())
     }
 
     // ---- Connection update receiver methods ----

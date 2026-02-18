@@ -66,13 +66,27 @@ def chat_request_to_text_generation(
             dumped: dict[str, Any] = msg_copy.model_dump(exclude_none=True)
             chat_template_messages.append(dumped)
 
+    # Detect autocomplete-like requests (often single message, or specific models)
+    is_autocomplete = False
+    if len(request.messages) == 1:
+        msg_content = str(request.messages[0].content)
+        if "<|fim_prefix|>" in msg_content or "<|fim_suffix|>" in msg_content:
+            is_autocomplete = True
+
+    max_tokens = request.max_tokens
+    if is_autocomplete:
+        if max_tokens is None or max_tokens > 64:
+            max_tokens = 64
+    elif max_tokens is None:
+        max_tokens = 4096  # Default for chat
+
     return TextGenerationTaskParams(
         model=request.model,
         input=input_messages
         if input_messages
         else [InputMessage(role="user", content="")],
         instructions=instructions,
-        max_output_tokens=request.max_tokens,
+        max_output_tokens=max_tokens,
         temperature=request.temperature,
         top_p=request.top_p,
         top_k=request.top_k,

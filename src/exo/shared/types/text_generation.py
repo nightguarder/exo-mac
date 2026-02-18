@@ -43,3 +43,4 @@ class TextGenerationTaskParams(BaseModel, frozen=True):
     enable_thinking: bool | None = None
     logprobs: bool = False
     top_logprobs: int | None = None
+    is_raw_prompt: bool = False

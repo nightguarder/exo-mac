@@ -157,7 +157,24 @@ class Worker:
                     self._nack_cancel_scope.cancel()
 
                 for idx, event in indexed_events:
+                    old_state = self.state
                     self.state = apply(self.state, IndexedEvent(idx=idx, event=event))
+                    
+                    # If a task was cancelled/finished by master, notify the runner
+                    if isinstance(event, TaskStatusUpdated) and event.task_status in (TaskStatus.Complete, TaskStatus.Failed):
+                        task = old_state.tasks.get(event.task_id)
+                        if task and task.instance_id in self.state.instances:
+                            try:
+                                runner_id = self._task_to_runner_id(task)
+                                if runner_id in self.runners:
+                                    logger.info(f"Notifying runner {runner_id} of cancelled task {event.task_id}")
+                                    self._tg.start_soon(self.runners[runner_id].start_task, CancelTask(
+                                        task_id=event.task_id,
+                                        instance_id=task.instance_id,
+                                        command_id=getattr(task, "command_id", None)
+                                    ))
+                            except Exception:
+                                pass # Instance/runner might be gone
 
                     # Buffer input image chunks for image editing
                     if isinstance(event, InputChunkReceived):

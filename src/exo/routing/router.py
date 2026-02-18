@@ -168,6 +168,12 @@ class Router:
         if not self._tg:
             return
         self._tg.cancel_scope.cancel()
+        
+        try:
+            with move_on_after(2, shield=True):
+                await self._net.shutdown()
+        except Exception as e:
+            logger.warning(f"Error shutting down networking handle: {e}")
 
     async def _networking_subscribe(self, topic: str):
         await self._net.gossipsub_subscribe(topic)

@@ -17,8 +17,16 @@ class BaseCommand(TaggedModel):
     command_id: CommandId = Field(default_factory=CommandId)
 
 
+class UseMemory(BaseCommand):
+    """Command related to memory usage/availability."""
+
+
 class TestCommand(BaseCommand):
     __test__ = False
+
+
+class CancelGeneration(BaseCommand):
+    """Command to cancel a generation task."""
 
 
 class TextGeneration(BaseCommand):
@@ -96,6 +104,7 @@ Command = (
     | TaskCancelled
     | TaskFinished
     | SendInputChunk
+    | CancelGeneration
 )
 
 

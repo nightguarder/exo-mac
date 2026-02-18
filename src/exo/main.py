@@ -254,7 +254,11 @@ def main():
     target = min(max(soft, 65535), hard)
     resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
 
-    mp.set_start_method("spawn")
+    try:
+        mp.set_start_method("spawn")
+    except RuntimeError:
+        if mp.get_start_method() != "spawn":
+            logger.warning(f"Start method is already set to {mp.get_start_method()}, expected spawn")
     # TODO: Refactor the current verbosity system
     logger_setup(EXO_LOG, args.verbosity)
     logger.info("Starting EXO")

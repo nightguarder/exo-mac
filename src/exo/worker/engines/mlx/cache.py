@@ -1,4 +1,5 @@
 import os
+import time
 from copy import deepcopy
 
 import mlx.core as mx
@@ -22,6 +23,8 @@ _DEFAULT_MEMORY_THRESHOLD = 0.9
 _MEMORY_THRESHOLD = float(
     os.environ.get("EXO_MEMORY_THRESHOLD", _DEFAULT_MEMORY_THRESHOLD)
 )
+
+_KV_CACHE_TTL = float(os.environ.get("EXO_KV_CACHE_TTL", 300))  # 5 minutes default
 
 
 class CacheSnapshot:
@@ -68,8 +71,7 @@ class KVPrefixCache:
         self.prompts: list[mx.array] = []  # mx array of tokens (ints)
         self.caches: list[KVCacheType] = []
         self._snapshots: list[list[CacheSnapshot] | None] = []
-        self._last_used: list[int] = []  # monotonic counter of last access per entry
-        self._access_counter: int = 0
+        self._last_used: list[float] = []  # timestamp of last access per entry
         self._group = group
 
     def clear(self):
@@ -90,8 +92,7 @@ class KVPrefixCache:
         self.prompts.append(prompt_tokens)
         self.caches.append(deepcopy(cache))
         self._snapshots.append(ssm_snapshots)
-        self._access_counter += 1
-        self._last_used.append(self._access_counter)
+        self._last_used.append(time.time())
         logger.info(f"KV cache added: {len(prompt_tokens)} tokens")
 
     def update_kv_cache(
@@ -113,8 +114,7 @@ class KVPrefixCache:
         self.prompts[index] = prompt_tokens
         self.caches[index] = deepcopy(cache)
         self._snapshots[index] = merged or None
-        self._access_counter += 1
-        self._last_used[index] = self._access_counter
+        self._last_used[index] = time.time()
         logger.info(f"KV cache updated (index {index}): {len(prompt_tokens)} tokens")
 
     def _get_snapshot(
@@ -189,31 +189,44 @@ class KVPrefixCache:
                 if hasattr(c, "offset"):
                     c.offset = restore_pos
 
-        self._access_counter += 1
-        self._last_used[best_index] = self._access_counter
+        self._last_used[best_index] = time.time()
         remaining = prompt_tokens[restore_pos:]
 
         return prompt_cache, remaining, best_index
 
     def _evict_if_needed(self):
-        """Evict least recently used entries while memory usage is high."""
+        """Evict least recently used entries while memory usage is high or TTL exceeded."""
         if len(self.caches) == 0:
             return
 
-        # Evict LRU entries until below threshold
+        now = time.time()
+        indices_to_remove: list[int] = []
+
+        # 1. Evict expired entries
+        for i, last_used in enumerate(self._last_used):
+            if now - last_used > _KV_CACHE_TTL:
+                indices_to_remove.append(i)
+
+        if indices_to_remove:
+            logger.info(f"Evicting {len(indices_to_remove)} expired KV cache entries")
+            self._evict(indices_to_remove)
+
+        # 2. Evict LRU entries until below threshold
         while (
             len(self.caches) > 0
             and self.get_memory_used_percentage() > _MEMORY_THRESHOLD
         ):
             lru_index = self._last_used.index(min(self._last_used))
-            evicted_tokens = len(self.prompts[lru_index])
-            self.prompts.pop(lru_index)
-            self.caches.pop(lru_index)
-            self._snapshots.pop(lru_index)
-            self._last_used.pop(lru_index)
-            logger.info(
-                f"KV cache evicted LRU entry ({evicted_tokens} tokens) due to memory usage"
-            )
+            logger.info("Evicting LRU KV cache entry due to memory usage")
+            self._evict([lru_index])
+
+    def _evict(self, indices: list[int]):
+        """Remove specified indices from cache."""
+        for index in sorted(indices, reverse=True):
+            self.prompts.pop(index)
+            self.caches.pop(index)
+            self._snapshots.pop(index)
+            self._last_used.pop(index)
 
     def get_memory_used_percentage(self) -> float:
         local_pressure: float = get_memory_used_percentage()

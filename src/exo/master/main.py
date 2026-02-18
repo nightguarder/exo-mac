@@ -15,6 +15,7 @@ from exo.master.placement import (
 from exo.shared.apply import apply
 from exo.shared.constants import EXO_EVENT_LOG_DIR, EXO_TRACING_ENABLED
 from exo.shared.types.commands import (
+    CancelGeneration,
     CreateInstance,
     DeleteInstance,
     ForwarderCommand,
@@ -353,6 +354,16 @@ class Master:
                                 start=command.since_idx,
                             ):
                                 await self._send_event(IndexedEvent(idx=i, event=event))
+                        case CancelGeneration():
+                            if command.command_id in self.command_task_mapping:
+                                task_id = self.command_task_mapping[command.command_id]
+                                logger.info(f"Cancelling task {task_id} for command {command.command_id}")
+                                generated_events.append(
+                                    TaskStatusUpdated(
+                                        task_id=task_id,
+                                        task_status=TaskStatus.Failed,
+                                    )
+                                )
                     for event in generated_events:
                         await self.event_sender.send(event)
                 except ValueError as e:

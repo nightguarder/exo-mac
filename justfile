@@ -29,7 +29,7 @@ build-dashboard:
     npm run build
 
 package:
-    uv run pyinstaller packaging/pyinstaller/exo.spec
+    uv run pyinstaller --noconfirm packaging/pyinstaller/exo.spec
 
 clean:
     rm -rf **/__pycache__
@@ -38,3 +38,21 @@ clean:
     rm -rf dashboard/node_modules
     rm -rf dashboard/.svelte-kit
     rm -rf dashboard/build
+
+kill:
+    # Kill process on default port 52415
+    lsof -ti:52415 | xargs kill -9 2>/dev/null || true
+    # Fallback kill by name
+    pkill -9 -f "python -m exo" 2>/dev/null || true
+    pkill -9 -f "EXO.app" 2>/dev/null || true
+    # Kill the backend binary specifically (in case the app wrapper is gone but backend lingers)
+    pkill -9 -f "Contents/Resources/exo/exo" 2>/dev/null || true
+
+build-macos: build-dashboard package
+    # Build the macOS app
+    cd app/EXO && xcodebuild build -scheme EXO -configuration Release -derivedDataPath build
+    # Inject the Python backend
+    rm -rf app/EXO/build/Build/Products/Release/EXO.app/Contents/Resources/exo
+    mkdir -p app/EXO/build/Build/Products/Release/EXO.app/Contents/Resources
+    cp -R dist/exo app/EXO/build/Build/Products/Release/EXO.app/Contents/Resources/exo
+    @echo "App built at app/EXO/build/Build/Products/Release/EXO.app"
