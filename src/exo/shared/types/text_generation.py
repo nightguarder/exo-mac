@@ -44,3 +44,6 @@ class TextGenerationTaskParams(BaseModel, frozen=True):
     logprobs: bool = False
     top_logprobs: int | None = None
     is_raw_prompt: bool = False
+    n: int | None = None
+    frequency_penalty: float | None = None
+    presence_penalty: float | None = None

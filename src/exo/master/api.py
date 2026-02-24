@@ -217,7 +217,9 @@ class API:
                 return response
             finally:
                 duration = time.perf_counter() - start_time
-                logger.debug(f"API request finished: {request.method} {request.url.path} took {duration:.2f}s")
+                logger.debug(
+                    f"API request finished: {request.method} {request.url.path} took {duration:.2f}s"
+                )
 
         self._setup_exception_handlers()
         self._setup_cors()
@@ -752,7 +754,9 @@ class API:
             )
         return resolved_model
 
-    def _apply_safety_caps(self, params: TextGenerationTaskParams) -> TextGenerationTaskParams:
+    def _apply_safety_caps(
+        self, params: TextGenerationTaskParams
+    ) -> TextGenerationTaskParams:
         """Apply safety caps to generation parameters to prevent resource exhaustion."""
         max_tokens = params.max_output_tokens
 
@@ -761,16 +765,17 @@ class API:
         if max_tokens is None or max_tokens > global_hard_cap:
             max_tokens = global_hard_cap
 
-        # Auto-detect autocomplete if not already capped
+        # Auto-detect autocomplete (FIM) requests - only apply aggressive cap to true autocomplete
+        # Chat edit requests should NOT be caught by this - they need longer responses
         prompt_content = "".join(m.content for m in params.input)
-        is_autocomplete = (
-            params.is_raw_prompt or 
-            "<|fim_prefix|>" in prompt_content or 
-            (params.stop and any(s in params.stop for s in ["<|fim_middle|>", "```", "\n\n"]))
+        is_fim_autocomplete = params.is_raw_prompt and (
+            "<|fim_prefix|>" in prompt_content or "<|fim_suffix|>" in prompt_content
         )
 
-        if is_autocomplete and max_tokens > 128:
-            logger.info(f"Applying safety cap for autocomplete task: {max_tokens} -> 128")
+        if is_fim_autocomplete and max_tokens > 128:
+            logger.info(
+                f"Applying safety cap for FIM autocomplete task: {max_tokens} -> 128"
+            )
             max_tokens = 128
 
         logger.debug(f"Final safety capped max_tokens: {max_tokens}")

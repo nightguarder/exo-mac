@@ -16,7 +16,7 @@ from exo.shared.types.api import (
     Logprobs,
     LogprobsContentItem,
 )
-from exo.shared.types.chunks import ErrorChunk, TokenChunk
+from exo.shared.types.chunks import ErrorChunk, TokenChunk, ToolCallChunk
 from exo.shared.types.common import CommandId
 from exo.shared.types.text_generation import InputMessage, TextGenerationTaskParams
 
@@ -25,7 +25,7 @@ def completion_request_to_text_generation(
     request: CompletionRequest,
 ) -> TextGenerationTaskParams:
     input_messages: list[InputMessage] = []
-    
+
     # Handle prompts
     prompts: list[str]
     if isinstance(request.prompt, str):
@@ -36,7 +36,7 @@ def completion_request_to_text_generation(
     # For now, we only support single prompt for simplicity in this adapter
     # The TextGenerationTaskParams expects a list of InputMessages.
     # For completion, we verify it's usually just "user" content or raw text.
-    # We'll treat the prompt as a user message for now, but really we might need 
+    # We'll treat the prompt as a user message for now, but really we might need
     # a "system" or "raw" role if we want exact completion without chat formatting.
     # However, TextGenerationTaskParams uses InputMessage which enforces roles.
     # If the underlying model is a base model (not instruct/chat), we might need to be careful.
@@ -44,12 +44,12 @@ def completion_request_to_text_generation(
     # Let's assume we pass it as 'user' role for now, or maybe we need a 'raw' option?
     # TextGenerationTaskParams has `input: list[InputMessage]`.
     # Let's inspect InputMessage again: role: MessageRole = Literal["user", "assistant", "system", "developer"]
-    
-    # If we want raw completion, we might need to adjust how TextGenerationTaskParams works 
+
+    # If we want raw completion, we might need to adjust how TextGenerationTaskParams works
     # or how the engine interprets it. For now, let's map to 'user' and see.
-    # Actually, many base models in exo might expect chat template. 
+    # Actually, many base models in exo might expect chat template.
     # If it's a base model without chat template, 'user' content is usually just passed through.
-    
+
     prompt_content = prompts[0] if prompts else ""
     if request.suffix:
         # FIM support: construct FIM prompt
@@ -59,7 +59,7 @@ def completion_request_to_text_generation(
         SUF = "<|fim_suffix|>"
         MID = "<|fim_middle|>"
         prompt_content = f"{PRE}{prompt_content}{SUF}{request.suffix}{MID}"
-        
+
         # Add default FIM stop tokens if not present
         # Qwen/DeepSeek use these tokens to signal end of FIM or file
         default_stops = [
@@ -140,6 +140,7 @@ def chunk_to_completion_response(
         ],
     )
 
+
 def chunk_to_stream_response(
     chunk: TokenChunk, command_id: CommandId, index: int = 0
 ) -> CompletionStreamResponse:
@@ -173,7 +174,7 @@ def chunk_to_stream_response(
 
 async def generate_completion_stream(
     command_id: CommandId,
-    chunk_stream: AsyncGenerator[ErrorChunk | TokenChunk, None],
+    chunk_stream: AsyncGenerator[ErrorChunk | TokenChunk | ToolCallChunk, None],
 ) -> AsyncGenerator[str, None]:
     """Generate Completions API streaming events from chunks."""
     async for chunk in chunk_stream:
@@ -202,7 +203,7 @@ async def generate_completion_stream(
 
 async def collect_completion_response(
     command_id: CommandId,
-    chunk_stream: AsyncGenerator[ErrorChunk | TokenChunk, None],
+    chunk_stream: AsyncGenerator[ErrorChunk | TokenChunk | ToolCallChunk, None],
 ) -> CompletionResponse:
     """Collect all token chunks and return a single CompletionResponse."""
     text_parts: list[str] = []
@@ -220,7 +221,7 @@ async def collect_completion_response(
 
         if model is None:
             model = chunk.model
-        
+
         # Collect stats if available (not standard in chunk yet but good to have)
         if chunk.stats:
             prompt_tokens = chunk.stats.prompt_tokens
@@ -236,7 +237,7 @@ async def collect_completion_response(
                         top_logprobs=chunk.top_logprobs or [],
                     )
                 )
-            
+
             if chunk.finish_reason is not None:
                 finish_reason = chunk.finish_reason
 
@@ -263,6 +264,6 @@ async def collect_completion_response(
         usage=CompletionUsage(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens
-        )
+            total_tokens=prompt_tokens + completion_tokens,
+        ),
     )
